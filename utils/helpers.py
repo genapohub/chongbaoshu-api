@@ -1,0 +1,57 @@
+from datetime import datetime, timedelta
+from typing import Optional
+
+def calculate_due_date(species: str, mate_date: str) -> str:
+    days = {
+        "dog": 63,
+        "cat": 65,
+        "bird": 28,
+        "rabbit": 31,
+        "other": 63,
+    }
+    offset = days.get(species, 63)
+    date = datetime.strptime(mate_date, "%Y-%m-%d")
+    due_date = date + timedelta(days=offset)
+    return due_date.strftime("%Y-%m-%d")
+
+def calculate_next_date(record_type: str, record_date: str, vaccine_type: str = None, deworm_type: str = None) -> Optional[str]:
+    if record_type == "vaccine":
+        offset = 365
+    elif record_type == "deworm":
+        deworm_intervals = {
+            "体内": 30,
+            "体外": 90,
+            "体内外": 30,
+        }
+        offset = deworm_intervals.get(deworm_type, 30)
+    else:
+        return None
+    date = datetime.strptime(record_date, "%Y-%m-%d")
+    next_date = date + timedelta(days=offset)
+    return next_date.strftime("%Y-%m-%d")
+
+def is_valid_status_transition(current_status: str, target_status: str) -> bool:
+    valid_transitions = {
+        "mated": ["pregnant", "failed"],
+        "pregnant": ["ultrasound_confirmed", "failed"],
+        "ultrasound_confirmed": ["delivered", "failed"],
+        "delivered": ["weaned"],
+        "weaned": [],
+        "failed": [],
+    }
+    return target_status in valid_transitions.get(current_status, [])
+
+FREE_LIMITS = {
+    "maxPets": 3,
+    "maxPhotosPerPet": 3,
+    "maxBreedingRecords": 3,
+}
+
+SUBSCRIPTION_PLANS = {
+    "free": dict(list(FREE_LIMITS.items()) + [("price", 0), ("name", "免费版")]),
+    "basic": {"maxPets": 100, "maxPhotosPerPet": 20, "maxBreedingRecords": 50, "price": 49, "name": "基础版"},
+    "pro": {"maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreedingRecords": "unlimited", "price": 149, "name": "专业版"},
+}
+
+def get_user_limits(tier: str) -> dict:
+    return SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
