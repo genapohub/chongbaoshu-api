@@ -36,6 +36,7 @@ class CreatePetRequest(BaseModel):
     father_breed: Optional[str] = None
     mother_name: Optional[str] = None
     mother_breed: Optional[str] = None
+    role: Optional[str] = None
     tags: Optional[List[str]] = None
 
 @router.get("")
@@ -59,8 +60,21 @@ async def get_pets(
     
     result = []
     for pet in pets:
-        photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id, PetPhoto.sort_order == 0).first()
+        all_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).order_by(PetPhoto.sort_order).all()
         tags = db.query(PetTag).filter(PetTag.pet_id == pet.id).all()
+        
+        avatar_photo = None
+        if pet.avatar_photo_id:
+            avatar_photo_obj = db.query(PetPhoto).filter(PetPhoto.id == pet.avatar_photo_id).first()
+            if avatar_photo_obj:
+                avatar_photo = avatar_photo_obj.photo_url
+        
+        if not avatar_photo and all_photos:
+            avatar_photo = all_photos[0].photo_url
+            gallery_photos = all_photos[1:] if len(all_photos) > 1 else []
+        else:
+            gallery_photos = [p for p in all_photos if p.id != pet.avatar_photo_id]
+        
         result.append({
             "id": pet.id,
             "name": pet.name,
@@ -68,7 +82,8 @@ async def get_pets(
             "breed": pet.breed,
             "gender": pet.gender,
             "status": pet.status,
-            "avatar_photo": photos.photo_url if photos else None,
+            "avatar_photo": avatar_photo,
+            "photos": [{"id": p.id, "photo_url": p.photo_url, "sort_order": p.sort_order} for p in gallery_photos],
             "tags": [t.tag for t in tags],
             "birth_date": pet.birth_date,
             "updated_at": pet.updated_at,
@@ -86,7 +101,21 @@ async def get_pets(
 
 @router.post("")
 async def create_pet(
-    request: CreatePetRequest,
+    name: str = Form(...),
+    species: str = Form(...),
+    breed: Optional[str] = Form(None),
+    gender: Optional[str] = Form(None),
+    birth_date: Optional[str] = Form(None),
+    color: Optional[str] = Form(None),
+    chip_no: Optional[str] = Form(None),
+    chip_number: Optional[str] = Form(None),
+    father_name: Optional[str] = Form(None),
+    father_breed: Optional[str] = Form(None),
+    mother_name: Optional[str] = Form(None),
+    mother_breed: Optional[str] = Form(None),
+    role: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    avatar: Optional[UploadFile] = File(None),
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -104,36 +133,64 @@ async def create_pet(
     if limits["maxPets"] != "unlimited" and current_pets >= limits["maxPets"]:
         raise HTTPException(status_code=2001, detail="已达宠物数量上限，请升级订阅")
     
-    chip_number = request.chip_number or request.chip_no
+    chip_number = chip_number or chip_no
     
     pet = Pet(
         owner_id=current_user.id,
-        name=request.name,
-        species=request.species,
-        breed=request.breed,
-        gender=request.gender,
-        birth_date=datetime.fromisoformat(request.birth_date) if request.birth_date else None,
-        color=request.color,
+        name=name,
+        species=species,
+        breed=breed,
+        gender=gender,
+        birth_date=datetime.fromisoformat(birth_date) if birth_date else None,
+        color=color,
         chip_no=chip_number,
-        father_name=request.father_name,
-        father_breed=request.father_breed,
-        mother_name=request.mother_name,
-        mother_breed=request.mother_breed,
+        father_name=father_name,
+        father_breed=father_breed,
+        mother_name=mother_name,
+        mother_breed=mother_breed,
+        role=role,
         status="active",
     )
     db.add(pet)
     db.flush()
     
-    if request.tags:
-        for i, tag in enumerate(request.tags):
-            db.add(PetTag(pet_id=pet.id, tag=tag))
+    if tags:
+        tag_list = tags.split(",")
+        for tag in tag_list:
+            db.add(PetTag(pet_id=pet.id, tag=tag.strip()))
+    
+    avatar_photo = None
+    if avatar:
+        import os
+        from uuid import uuid4
+        
+        upload_dir = "uploads/pets"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        file_ext = avatar.filename.split(".")[-1] if "." in avatar.filename else "jpg"
+        file_name = f"{uuid4().hex}.{file_ext}"
+        file_path = f"{upload_dir}/{file_name}"
+        
+        with open(file_path, "wb") as f:
+            f.write(await avatar.read())
+        
+        photo = PetPhoto(
+            pet_id=pet.id,
+            photo_url=f"/{file_path}",
+            sort_order=0
+        )
+        db.add(photo)
+        db.flush()
+        pet.avatar_photo_id = photo.id
+        db.flush()
+        avatar_photo = f"/{file_path}"
     
     db.commit()
     db.refresh(pet)
     
     return {
         "code": 0,
-        "data": {"id": pet.id}
+        "data": {"id": pet.id, "avatar_photo": avatar_photo}
     }
 
 @router.get("/{pet_id}")
@@ -146,8 +203,20 @@ async def get_pet(
     if not pet:
         raise HTTPException(status_code=404, detail="宠物不存在")
     
-    photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).order_by(PetPhoto.sort_order).all()
+    all_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).order_by(PetPhoto.sort_order).all()
     tags = db.query(PetTag).filter(PetTag.pet_id == pet.id).all()
+    
+    avatar_photo = None
+    if pet.avatar_photo_id:
+        avatar_photo_obj = db.query(PetPhoto).filter(PetPhoto.id == pet.avatar_photo_id).first()
+        if avatar_photo_obj:
+            avatar_photo = avatar_photo_obj.photo_url
+    
+    if not avatar_photo and all_photos:
+        avatar_photo = all_photos[0].photo_url
+        gallery_photos = all_photos[1:] if len(all_photos) > 1 else []
+    else:
+        gallery_photos = [p for p in all_photos if p.id != pet.avatar_photo_id]
     
     return {
         "code": 0,
@@ -166,7 +235,8 @@ async def get_pet(
             "father_breed": pet.father_breed,
             "mother_name": pet.mother_name,
             "mother_breed": pet.mother_breed,
-            "photos": [{"id": p.id, "photo_url": p.photo_url, "sort_order": p.sort_order} for p in photos],
+            "avatar_photo": avatar_photo,
+            "photos": [{"id": p.id, "photo_url": p.photo_url, "sort_order": p.sort_order} for p in gallery_photos],
             "tags": [t.tag for t in tags],
             "created_at": pet.created_at,
             "updated_at": pet.updated_at,

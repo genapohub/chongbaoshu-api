@@ -16,6 +16,7 @@ class Pet(Base):
     color = Column(String(50), nullable=True, comment="毛色")
     chip_no = Column(String(50), nullable=True, comment="芯片号")
     status = Column(String(20), default="active", comment="状态")
+    role = Column(String(20), nullable=True, comment="角色：种犬/在售/幼崽/退役")
     avatar_photo_id = Column(Integer, ForeignKey("pet_photos.id"), nullable=True, comment="封面照片ID")
     father_id = Column(Integer, nullable=True, comment="父亲ID")
     mother_id = Column(Integer, nullable=True, comment="母亲ID")

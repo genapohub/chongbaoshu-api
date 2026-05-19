@@ -61,24 +61,31 @@ app.include_router(notifications_router)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
-    # 将自定义错误码映射到标准HTTP状态码
     custom_code = exc.status_code
-    if custom_code == 1001:  # 参数错误
+    if custom_code == 1001:
         http_status = 400
-    elif custom_code == 1002:  # 用户不存在/未登录
+    elif custom_code == 1002:
         http_status = 401
-    elif custom_code == 2001:  # 超限额
+    elif custom_code == 2001:
         http_status = 403
-    elif custom_code == 5001:  # 超限额
+    elif custom_code == 5001:
         http_status = 403
-    elif 400 <= custom_code < 600:  # 标准HTTP状态码
+    elif 400 <= custom_code < 600:
         http_status = custom_code
-    else:  # 其他自定义码
+    else:
         http_status = 400
     
     return JSONResponse(
         status_code=http_status,
         content={"code": custom_code, "message": exc.detail}
+    )
+
+from fastapi.exceptions import RequestValidationError
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=400,
+        content={"code": 1001, "message": "参数验证失败"}
     )
 
 @app.exception_handler(404)

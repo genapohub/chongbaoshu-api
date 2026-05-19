@@ -264,10 +264,44 @@ async def get_dashboard(
     user = db.query(User).filter(User.id == current_user.id).first()
     
     pet_count = db.query(Pet).filter(Pet.owner_id == current_user.id, Pet.is_deleted == False).count()
-    breeding_count = db.query(BreedingRecord).filter(BreedingRecord.owner_id == current_user.id).count()
+    breeding_count = db.query(BreedingRecord).filter(BreedingRecord.owner_id == current_user.id, BreedingRecord.is_deleted == False).count()
     health_count = db.query(HealthRecord).filter(HealthRecord.owner_id == current_user.id).count()
     
     limits = get_user_limits(user.subscription_tier)
+    
+    # 获取健康提醒数据
+    upcoming_reminders = []
+    health_records = db.query(HealthRecord).filter(
+        HealthRecord.owner_id == current_user.id,
+        HealthRecord.is_deleted == False,
+        HealthRecord.next_date != None
+    ).limit(10).all()
+    
+    for record in health_records:
+        pet = db.query(Pet).filter(Pet.id == record.pet_id, Pet.is_deleted == False).first()
+        upcoming_reminders.append({
+            "id": record.id,
+            "pet_name": pet.name if pet else "宠物",
+            "type": record.type,
+            "vaccine_type": record.vaccine_type,
+            "next_date": format_datetime(record.next_date) if record.next_date else None,
+        })
+    
+    # 获取预产期提醒
+    due_breedings = []
+    breedings = db.query(BreedingRecord).filter(
+        BreedingRecord.owner_id == current_user.id,
+        BreedingRecord.is_deleted == False,
+        BreedingRecord.due_date != None
+    ).limit(10).all()
+    
+    for breeding in breedings:
+        mother_pet = db.query(Pet).filter(Pet.id == breeding.mother_id, Pet.is_deleted == False).first()
+        due_breedings.append({
+            "id": breeding.id,
+            "mother_name": mother_pet.name if mother_pet else "母犬",
+            "due_date": format_datetime(breeding.due_date) if breeding.due_date else None,
+        })
     
     return {
         "code": 0,
@@ -279,11 +313,13 @@ async def get_dashboard(
                 "subscription_tier": user.subscription_tier,
             },
             "stats": {
-                "pets": pet_count,
-                "breedings": breeding_count,
-                "health": health_count,
+                "petCount": pet_count,
+                "breedingCount": breeding_count,
+                "healthCount": health_count,
             },
             "limits": limits,
+            "upcomingReminders": upcoming_reminders,
+            "dueBreedings": due_breedings,
         }
     }
 
@@ -300,13 +336,25 @@ async def get_limits(
     
     current_pets = db.query(Pet).filter(Pet.owner_id == current_user.id, Pet.is_deleted == False).count()
     
+    # 处理unlimited值，使用一个很大的数字代替
+    def get_limit_value(value):
+        if value == "unlimited":
+            return 999999
+        return value
+    
+    # 创建一个处理后的limits副本
+    processed_limits = {}
+    for key, value in limits.items():
+        processed_limits[key] = get_limit_value(value)
+    
     return {
         "code": 0,
         "data": {
             "tier": user.subscription_tier,
-            "max_pets": limits["maxPets"],
-            "current_pets": current_pets,
-            "limits": limits,
+            "maxPets": get_limit_value(limits["maxPets"]),
+            "maxBreedingRecords": get_limit_value(limits.get("maxBreedingRecords", limits.get("maxBreedings", 3))),
+            "currentPets": current_pets,
+            "limits": processed_limits,
         }
     }
 

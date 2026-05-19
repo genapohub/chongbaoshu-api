@@ -43,7 +43,8 @@ async def get_current_subscription(
         "data": {
             "tier": user.subscription_tier,
             "status": subscription.status if subscription else "active",
-            "expires_at": subscription.expires_at if subscription else None,
+            "expires_at": format_datetime(subscription.expires_at) if subscription and subscription.expires_at else None,
+            "auto_renew": False,
         }
     }
 

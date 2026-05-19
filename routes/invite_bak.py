@@ -1,3 +1,5 @@
+import random
+import string
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -18,8 +20,6 @@ def get_db():
         db.close()
 
 def generate_invite_code(db: Session, length: int = 8) -> str:
-    import random
-    import string
     chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
     while True:
         code = ''.join(random.choice(chars) for _ in range(length))

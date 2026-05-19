@@ -47,7 +47,8 @@ def calculate_due_date(species: str, mating_date: str) -> str:
 
 
 class AddBreedingRequest(BaseModel):
-    pet_id: int
+    pet_id: Optional[int] = None
+    mother_pet_id: Optional[int] = None
     mate_name: Optional[str] = None
     mating_date: str
     mating_method: Optional[str] = "natural"
@@ -122,8 +123,14 @@ async def add_breeding_record(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # 支持两种字段名：pet_id 和 mother_pet_id
+    pet_id = request.pet_id if request.pet_id is not None else request.mother_pet_id
+    
+    if pet_id is None:
+        raise HTTPException(status_code=1001, detail="缺少宠物ID")
+    
     pet = db.query(Pet).filter(
-        Pet.id == request.pet_id,
+        Pet.id == pet_id,
         Pet.owner_id == current_user.id,
         Pet.is_deleted == False
     ).first()
@@ -134,7 +141,7 @@ async def add_breeding_record(
 
     breeding = BreedingRecord(
         owner_id=current_user.id,
-        mother_id=request.pet_id,
+        mother_id=pet_id,
         mate_name=request.mate_name,
         mate_date=datetime.strptime(request.mating_date, "%Y-%m-%d").date(),
         due_date=datetime.strptime(due_date, "%Y-%m-%d").date() if due_date else None,
