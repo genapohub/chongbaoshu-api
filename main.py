@@ -16,6 +16,7 @@ from routes.photos import router as photos_router
 from routes.certificates import router as certificates_router
 from routes.export import router as export_router
 from routes.notifications import router as notifications_router
+from routes.feedback import router as feedback_router
 
 load_dotenv()
 
@@ -58,6 +59,7 @@ app.include_router(photos_router)
 app.include_router(certificates_router)
 app.include_router(export_router)
 app.include_router(notifications_router)
+app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
@@ -86,13 +88,6 @@ async def validation_exception_handler(request, exc):
     return JSONResponse(
         status_code=400,
         content={"code": 1001, "message": "参数验证失败"}
-    )
-
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={"code": 404, "message": "接口不存在"}
     )
 
 @app.on_event("startup")

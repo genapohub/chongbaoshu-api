@@ -27,6 +27,7 @@ class User(Base):
     remind_due_days = Column(Integer, default=7, comment="预产期提前天数")
     notify_in_app = Column(Boolean, default=True, comment="站内通知开关")
     notify_wechat = Column(Boolean, default=False, comment="微信推送开关")
+    notify_sms = Column(Boolean, default=False, comment="短信通知开关")
     invite_code = Column(String(20), unique=True, nullable=True, comment="邀请码")
     is_active = Column(Boolean, default=True, comment="是否活跃")
     created_at = Column(DateTime, default=func.now())

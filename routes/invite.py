@@ -1,11 +1,10 @@
+import random
+import string
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import Optional
-from datetime import datetime
 from config.database import SessionLocal
 from models.user import User
-from models.invite_record import InviteRecord
 from middleware.auth import get_current_user, TokenData
 
 router = APIRouter(prefix="/api/invite", tags=["invite"])
@@ -18,8 +17,6 @@ def get_db():
         db.close()
 
 def generate_invite_code(db: Session, length: int = 8) -> str:
-    import random
-    import string
     chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
     while True:
         code = ''.join(random.choice(chars) for _ in range(length))
@@ -69,6 +66,8 @@ async def redeem_invite_code(
     if inviter.id == user.id:
         raise HTTPException(status_code=400, detail="不能兑换自己的邀请码")
     
+    from models.invite_record import InviteRecord
+    
     existing = db.query(InviteRecord).filter(InviteRecord.invitee_id == user.id).first()
     if existing:
         raise HTTPException(status_code=400, detail="已被邀请过，不能重复兑换")
@@ -100,6 +99,7 @@ async def get_invite_records(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    from models.invite_record import InviteRecord
     query = db.query(InviteRecord).filter(InviteRecord.inviter_id == current_user.id)
     
     total = query.count()
@@ -134,6 +134,7 @@ async def get_invite_stats(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    from models.invite_record import InviteRecord
     total_invites = db.query(InviteRecord).filter(InviteRecord.inviter_id == current_user.id).count()
     redeemed_invites = db.query(InviteRecord).filter(
         InviteRecord.inviter_id == current_user.id,

@@ -296,3 +296,122 @@ async def delete_breeding_record(
     db.commit()
 
     return {"code": 0, "message": "删除成功"}
+
+
+class CheckInbreedingRequest(BaseModel):
+    mother_pet_id: int
+    father_pet_id: int
+
+
+@router.post("/check-inbreeding")
+async def check_inbreeding(
+    request: CheckInbreedingRequest,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    检测两只宠物是否有近亲关系
+    """
+    mother = db.query(Pet).filter(
+        Pet.id == request.mother_pet_id,
+        Pet.owner_id == current_user.id,
+        Pet.is_deleted == False
+    ).first()
+    if not mother:
+        raise HTTPException(status_code=404, detail="母宠不存在")
+
+    father = db.query(Pet).filter(
+        Pet.id == request.father_pet_id,
+        Pet.owner_id == current_user.id,
+        Pet.is_deleted == False
+    ).first()
+    if not father:
+        raise HTTPException(status_code=404, detail="父宠不存在")
+
+    def get_pedigree(pet):
+        """获取宠物的祖先信息"""
+        pedigree = set()
+        if pet.name:
+            pedigree.add(pet.name)
+        if pet.father_name:
+            pedigree.add(pet.father_name)
+        if pet.mother_name:
+            pedigree.add(pet.mother_name)
+        if pet.grandfather_p_name:
+            pedigree.add(pet.grandfather_p_name)
+        if pet.grandmother_p_name:
+            pedigree.add(pet.grandmother_p_name)
+        if pet.grandfather_m_name:
+            pedigree.add(pet.grandfather_m_name)
+        if pet.grandmother_m_name:
+            pedigree.add(pet.grandmother_m_name)
+        return pedigree
+
+    def get_parent_ids(pet):
+        """获取宠物的父母ID"""
+        parent_ids = set()
+        if pet.father_id:
+            parent_ids.add(pet.father_id)
+        if pet.mother_id:
+            parent_ids.add(pet.mother_id)
+        return parent_ids
+
+    # 检查ID关系
+    mother_parent_ids = get_parent_ids(mother)
+    father_parent_ids = get_parent_ids(father)
+
+    # 检查是否有共同的祖先ID
+    common_parent_ids = mother_parent_ids & father_parent_ids
+    if common_parent_ids:
+        return {
+            "code": 0,
+            "data": {
+                "is_inbreeding": True,
+                "relation": "父母辈近亲",
+                "message": "检测到两只宠物有共同的父母，建议不要配对"
+            }
+        }
+
+    # 检查是否互为父母
+    if mother.father_id == father.id or mother.mother_id == father.id:
+        return {
+            "code": 0,
+            "data": {
+                "is_inbreeding": True,
+                "relation": "父女/母子关系",
+                "message": "检测到近亲关系，建议不要配对"
+            }
+        }
+
+    if father.father_id == mother.id or father.mother_id == mother.id:
+        return {
+            "code": 0,
+            "data": {
+                "is_inbreeding": True,
+                "relation": "父女/母子关系",
+                "message": "检测到近亲关系，建议不要配对"
+            }
+        }
+
+    # 检查名字关系
+    mother_pedigree = get_pedigree(mother)
+    father_pedigree = get_pedigree(father)
+    common_names = mother_pedigree & father_pedigree
+    if common_names:
+        return {
+            "code": 0,
+            "data": {
+                "is_inbreeding": True,
+                "relation": "家族成员重叠",
+                "message": f"检测到共同祖先: {', '.join(common_names)}，建议不要配对"
+            }
+        }
+
+    return {
+        "code": 0,
+        "data": {
+            "is_inbreeding": False,
+            "relation": "无近亲关系",
+            "message": "未检测到近亲关系，可以安全配对"
+        }
+    }

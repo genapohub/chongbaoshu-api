@@ -1,7 +1,7 @@
 import os
 import hashlib
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -184,8 +184,25 @@ async def get_profile(
     }
 
 @router.put("/profile")
+@router.post("/profile")
 async def update_profile(
-    request: UpdateProfileRequest,
+    nickname: Optional[str] = Form(None),
+    avatar_url: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    kennel_name: Optional[str] = Form(None),
+    kennel_address: Optional[str] = Form(None),
+    kennel_intro: Optional[str] = Form(None),
+    main_breeds: Optional[str] = Form(None),
+    wechat: Optional[str] = Form(None),
+    remind_vaccine: Optional[bool] = Form(None),
+    remind_deworm: Optional[bool] = Form(None),
+    remind_due: Optional[bool] = Form(None),
+    remind_vaccine_days: Optional[int] = Form(None),
+    remind_deworm_days: Optional[int] = Form(None),
+    remind_due_days: Optional[int] = Form(None),
+    notify_in_app: Optional[bool] = Form(None),
+    notify_wechat: Optional[bool] = Form(None),
+    kennel_logo: Optional[UploadFile] = File(None),
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -193,40 +210,54 @@ async def update_profile(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     
-    if request.nickname is not None:
-        user.nickname = request.nickname
-    if request.avatar_url is not None:
-        user.avatar_url = request.avatar_url
-    if request.phone is not None:
-        user.phone = request.phone
-    if request.kennel_name is not None:
-        user.kennel_name = request.kennel_name
-    if request.kennel_address is not None:
-        user.kennel_address = request.kennel_address
-    if request.kennel_intro is not None:
-        user.kennel_intro = request.kennel_intro
-    if request.kennel_logo is not None:
-        user.kennel_logo = request.kennel_logo
-    if request.main_breeds is not None:
-        user.main_breeds = request.main_breeds
-    if request.wechat is not None:
-        user.wechat = request.wechat
-    if request.remind_vaccine is not None:
-        user.remind_vaccine = request.remind_vaccine
-    if request.remind_deworm is not None:
-        user.remind_deworm = request.remind_deworm
-    if request.remind_due is not None:
-        user.remind_due = request.remind_due
-    if request.remind_vaccine_days is not None:
-        user.remind_vaccine_days = request.remind_vaccine_days
-    if request.remind_deworm_days is not None:
-        user.remind_deworm_days = request.remind_deworm_days
-    if request.remind_due_days is not None:
-        user.remind_due_days = request.remind_due_days
-    if request.notify_in_app is not None:
-        user.notify_in_app = request.notify_in_app
-    if request.notify_wechat is not None:
-        user.notify_wechat = request.notify_wechat
+    if nickname is not None:
+        user.nickname = nickname
+    if avatar_url is not None:
+        user.avatar_url = avatar_url
+    if phone is not None:
+        user.phone = phone
+    if kennel_name is not None:
+        user.kennel_name = kennel_name
+    if kennel_address is not None:
+        user.kennel_address = kennel_address
+    if kennel_intro is not None:
+        user.kennel_intro = kennel_intro
+    if main_breeds is not None:
+        user.main_breeds = main_breeds
+    if wechat is not None:
+        user.wechat = wechat
+    if remind_vaccine is not None:
+        user.remind_vaccine = remind_vaccine
+    if remind_deworm is not None:
+        user.remind_deworm = remind_deworm
+    if remind_due is not None:
+        user.remind_due = remind_due
+    if remind_vaccine_days is not None:
+        user.remind_vaccine_days = remind_vaccine_days
+    if remind_deworm_days is not None:
+        user.remind_deworm_days = remind_deworm_days
+    if remind_due_days is not None:
+        user.remind_due_days = remind_due_days
+    if notify_in_app is not None:
+        user.notify_in_app = notify_in_app
+    if notify_wechat is not None:
+        user.notify_wechat = notify_wechat
+    
+    if kennel_logo is not None:
+        import os
+        from uuid import uuid4
+        
+        upload_dir = "uploads/kennel"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        file_ext = kennel_logo.filename.split(".")[-1] if "." in kennel_logo.filename else "jpg"
+        file_name = f"{uuid4().hex}.{file_ext}"
+        file_path = f"{upload_dir}/{file_name}"
+        
+        with open(file_path, "wb") as f:
+            f.write(await kennel_logo.read())
+        
+        user.kennel_logo = f"/{file_path}"
     
     db.commit()
     
@@ -386,6 +417,40 @@ async def phone_login(request: PhoneLoginRequest, db: Session = Depends(get_db))
     if not request.phone or not request.code:
         raise HTTPException(status_code=1001, detail="请输入手机号和验证码")
     
+    # 开发模式：支持默认验证码123456直接登录（无需先发送验证码）
+    if DEV_MODE and request.code == "123456":
+        print(f"[DEV MODE] 使用默认验证码登录: {request.phone}")
+        user, is_new = get_or_create_user(db, f"phone_{request.phone}", None)
+        
+        if not user.phone:
+            user.phone = request.phone
+            db.commit()
+            db.refresh(user)
+        
+        access_token = create_access_token({
+            "id": user.id,
+            "openid": user.openid,
+            "subscription_tier": user.subscription_tier,
+        })
+        
+        return {
+            "code": 0,
+            "message": "登录成功",
+            "data": {
+                "token": access_token,
+                "user": {
+                    "id": user.id,
+                    "nickname": user.nickname,
+                    "avatar_url": user.avatar_url,
+                    "phone": user.phone,
+                    "kennel_name": user.kennel_name,
+                    "subscription_tier": user.subscription_tier,
+                },
+                "isNew": is_new,
+            }
+        }
+    
+    # 生产模式：正常验证码校验
     verification = db.query(VerificationCode).filter(
         VerificationCode.phone == request.phone,
         VerificationCode.code == request.code,
