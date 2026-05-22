@@ -334,14 +334,111 @@ async def get_pedigree(
     if not pet:
         raise HTTPException(status_code=404, detail="宠物不存在")
     
+    # 获取父母信息
+    father = None
+    mother = None
+    grandfather_p = None
+    grandmother_p = None
+    grandfather_m = None
+    grandmother_m = None
+    
+    if pet.father_id:
+        father = db.query(Pet).filter(Pet.id == pet.father_id, Pet.is_deleted == False).first()
+        if father and generation > 1:
+            grandfather_p = db.query(Pet).filter(Pet.id == father.father_id, Pet.is_deleted == False).first()
+            grandmother_p = db.query(Pet).filter(Pet.id == father.mother_id, Pet.is_deleted == False).first()
+    
+    if pet.mother_id:
+        mother = db.query(Pet).filter(Pet.id == pet.mother_id, Pet.is_deleted == False).first()
+        if mother and generation > 1:
+            grandfather_m = db.query(Pet).filter(Pet.id == mother.father_id, Pet.is_deleted == False).first()
+            grandmother_m = db.query(Pet).filter(Pet.id == mother.mother_id, Pet.is_deleted == False).first()
+    
+    # 构建返回数据
+    pedigree_data = {
+        "pet_id": pet.id,
+        "pet_name": pet.name,
+        "breed": pet.breed,
+        "color": pet.color,
+        "chip_number": pet.chip_no,
+        # 父亲
+        "father_id": pet.father_id,
+        "father_name": pet.father_name or (father.name if father else None),
+        "father_breed": pet.father_breed or (father.breed if father else None),
+        # 母亲
+        "mother_id": pet.mother_id,
+        "mother_name": pet.mother_name or (mother.name if mother else None),
+        "mother_breed": pet.mother_breed or (mother.breed if mother else None),
+        # 父方祖父
+        "father_father_id": grandfather_p.id if grandfather_p else None,
+        "father_father_name": pet.grandfather_p_name or (grandfather_p.name if grandfather_p else None),
+        "father_father_breed": grandfather_p.breed if grandfather_p else None,
+        # 父方祖母
+        "father_mother_id": grandmother_p.id if grandmother_p else None,
+        "father_mother_name": pet.grandmother_p_name or (grandmother_p.name if grandmother_p else None),
+        "father_mother_breed": grandmother_p.breed if grandmother_p else None,
+        # 父方祖父的父亲
+        "father_father_father_id": None,
+        "father_father_father_name": None,
+        # 父方祖父的母亲
+        "father_father_mother_id": None,
+        "father_father_mother_name": None,
+        # 父方祖母的父亲
+        "father_mother_father_id": None,
+        "father_mother_father_name": None,
+        # 父方祖母的母亲
+        "father_mother_mother_id": None,
+        "father_mother_mother_name": None,
+        # 母方祖父
+        "mother_father_id": grandfather_m.id if grandfather_m else None,
+        "mother_father_name": pet.grandfather_m_name or (grandfather_m.name if grandfather_m else None),
+        "mother_father_breed": grandfather_m.breed if grandfather_m else None,
+        # 母方祖母
+        "mother_mother_id": grandmother_m.id if grandmother_m else None,
+        "mother_mother_name": pet.grandmother_m_name or (grandmother_m.name if grandmother_m else None),
+        "mother_mother_breed": grandmother_m.breed if grandmother_m else None,
+        # 母方祖父的父亲
+        "mother_father_father_id": None,
+        "mother_father_father_name": None,
+        # 母方祖父的母亲
+        "mother_father_mother_id": None,
+        "mother_father_mother_name": None,
+        # 母方祖母的父亲
+        "mother_mother_father_id": None,
+        "mother_mother_father_name": None,
+        # 母方祖母的母亲
+        "mother_mother_mother_id": None,
+        "mother_mother_mother_name": None,
+        # 额外信息
+        "generation": generation,
+        "is_pro": user.subscription_tier == "pro",
+    }
+    
+    # 非Pro用户隐藏详细信息
     if user.subscription_tier != "pro":
         return {
             "code": 0,
             "data": {
                 "pet_id": pet.id,
                 "pet_name": pet.name,
-                "generation": generation,
-                "pedigree_tree": None,
+                "registration_name": None,
+                "registration_number": None,
+                "kennel_name": None,
+                "color": pet.color,
+                "father_name": None,
+                "mother_name": None,
+                "father_father_name": None,
+                "father_mother_name": None,
+                "mother_father_name": None,
+                "mother_mother_name": None,
+                "father_father_father_name": None,
+                "father_father_mother_name": None,
+                "father_mother_father_name": None,
+                "father_mother_mother_name": None,
+                "mother_father_father_name": None,
+                "mother_father_mother_name": None,
+                "mother_mother_father_name": None,
+                "mother_mother_mother_name": None,
                 "is_pro": False,
                 "message": "升级为Pro用户可查看完整血统树"
             }
@@ -349,11 +446,5 @@ async def get_pedigree(
     
     return {
         "code": 0,
-        "data": {
-            "pet_id": pet.id,
-            "pet_name": pet.name,
-            "generation": generation,
-            "pedigree_tree": None,
-            "is_pro": True,
-        }
+        "data": pedigree_data
     }
