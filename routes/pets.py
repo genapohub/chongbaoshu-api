@@ -27,8 +27,12 @@ class CreatePetRequest(BaseModel):
     chip_number: Optional[str] = None
     father_name: Optional[str] = None
     father_breed: Optional[str] = None
+    grandfather_p_name: Optional[str] = None
+    grandmother_p_name: Optional[str] = None
     mother_name: Optional[str] = None
     mother_breed: Optional[str] = None
+    grandfather_m_name: Optional[str] = None
+    grandmother_m_name: Optional[str] = None
     role: Optional[str] = None
     tags: Optional[List[str]] = None
 
@@ -127,8 +131,12 @@ async def create_pet(
     chip_number: Optional[str] = Form(None),
     father_name: Optional[str] = Form(None),
     father_breed: Optional[str] = Form(None),
+    grandfather_p_name: Optional[str] = Form(None),
+    grandmother_p_name: Optional[str] = Form(None),
     mother_name: Optional[str] = Form(None),
     mother_breed: Optional[str] = Form(None),
+    grandfather_m_name: Optional[str] = Form(None),
+    grandmother_m_name: Optional[str] = Form(None),
     role: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     avatar: Optional[UploadFile] = File(None),
@@ -162,8 +170,12 @@ async def create_pet(
         chip_no=chip_number,
         father_name=father_name,
         father_breed=father_breed,
+        grandfather_p_name=grandfather_p_name,
+        grandmother_p_name=grandmother_p_name,
         mother_name=mother_name,
         mother_breed=mother_breed,
+        grandfather_m_name=grandfather_m_name,
+        grandmother_m_name=grandmother_m_name,
         role=role,
         status="active",
     )
@@ -269,8 +281,12 @@ class UpdatePetRequest(BaseModel):
     chip_no: Optional[str] = None
     father_name: Optional[str] = None
     father_breed: Optional[str] = None
+    grandfather_p_name: Optional[str] = None
+    grandmother_p_name: Optional[str] = None
     mother_name: Optional[str] = None
     mother_breed: Optional[str] = None
+    grandfather_m_name: Optional[str] = None
+    grandmother_m_name: Optional[str] = None
     tags: Optional[List[str]] = None
 
 @router.put("/{pet_id}")
@@ -302,10 +318,18 @@ async def update_pet(
         pet.father_name = request.father_name
     if request.father_breed is not None:
         pet.father_breed = request.father_breed
+    if request.grandfather_p_name is not None:
+        pet.grandfather_p_name = request.grandfather_p_name
+    if request.grandmother_p_name is not None:
+        pet.grandmother_p_name = request.grandmother_p_name
     if request.mother_name is not None:
         pet.mother_name = request.mother_name
     if request.mother_breed is not None:
         pet.mother_breed = request.mother_breed
+    if request.grandfather_m_name is not None:
+        pet.grandfather_m_name = request.grandfather_m_name
+    if request.grandmother_m_name is not None:
+        pet.grandmother_m_name = request.grandmother_m_name
     
     if request.tags is not None:
         db.query(PetTag).filter(PetTag.pet_id == pet.id).delete()
@@ -426,6 +450,7 @@ async def get_pedigree(
         "mother_mother_mother_id": None,
         "mother_mother_mother_name": None,
         # 额外信息
+        "kennel_name": user.kennel_name,
         "generation": generation,
         "is_pro": user.subscription_tier == "pro",
     }
@@ -439,7 +464,7 @@ async def get_pedigree(
                 "pet_name": pet.name,
                 "registration_name": None,
                 "registration_number": None,
-                "kennel_name": None,
+                "kennel_name": user.kennel_name,
                 "color": pet.color,
                 "father_name": None,
                 "mother_name": None,

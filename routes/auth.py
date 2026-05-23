@@ -323,6 +323,63 @@ async def get_dashboard(
             "due_date": format_datetime(breeding.due_date) if breeding.due_date else None,
         })
     
+    # 获取最近动态
+    recent_activities = []
+
+    # 最近添加/更新的宠物
+    recent_pets = db.query(Pet).filter(
+        Pet.owner_id == current_user.id,
+        Pet.is_deleted == False
+    ).order_by(Pet.updated_at.desc()).limit(5).all()
+
+    for pet in recent_pets:
+        action = "添加了宠物" if pet.created_at == pet.updated_at else "更新了宠物"
+        recent_activities.append({
+            "text": f"{action}「{pet.name}」",
+            "time": format_datetime(pet.updated_at),
+            "sort_time": pet.updated_at,
+        })
+
+    # 最近添加的健康记录
+    recent_health = db.query(HealthRecord).filter(
+        HealthRecord.owner_id == current_user.id,
+        HealthRecord.is_deleted == False
+    ).order_by(HealthRecord.created_at.desc()).limit(5).all()
+
+    for record in recent_health:
+        pet = db.query(Pet).filter(Pet.id == record.pet_id, Pet.is_deleted == False).first()
+        pet_name = pet.name if pet else "宠物"
+        type_labels = {"vaccine": "疫苗", "deworm": "驱虫", "other": "健康"}
+        type_label = type_labels.get(record.type, "健康")
+        recent_activities.append({
+            "text": f"为「{pet_name}」添加了{type_label}记录",
+            "time": format_datetime(record.created_at),
+            "sort_time": record.created_at,
+        })
+
+    # 最近添加的繁育记录
+    recent_breedings = db.query(BreedingRecord).filter(
+        BreedingRecord.owner_id == current_user.id,
+        BreedingRecord.is_deleted == False
+    ).order_by(BreedingRecord.created_at.desc()).limit(5).all()
+
+    for breeding in recent_breedings:
+        mother_pet = db.query(Pet).filter(Pet.id == breeding.mother_id, Pet.is_deleted == False).first()
+        mother_name = mother_pet.name if mother_pet else "母犬"
+        recent_activities.append({
+            "text": f"为「{mother_name}」添加了配种记录",
+            "time": format_datetime(breeding.created_at),
+            "sort_time": breeding.created_at,
+        })
+
+    # 按时间倒序排列，取最近10条
+    recent_activities.sort(key=lambda x: x["sort_time"] if x["sort_time"] else datetime.min, reverse=True)
+    recent_activities = recent_activities[:10]
+
+    # 移除排序用的临时字段
+    for act in recent_activities:
+        act.pop("sort_time", None)
+
     return {
         "code": 0,
         "data": {
@@ -340,6 +397,7 @@ async def get_dashboard(
             "limits": limits,
             "upcomingReminders": upcoming_reminders,
             "dueBreedings": due_breedings,
+            "recentActivities": recent_activities,
         }
     }
 

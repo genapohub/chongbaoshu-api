@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from config.database import get_db
@@ -33,6 +34,7 @@ def calculate_due_date(species: str, mating_date: str) -> str:
 class AddBreedingRequest(BaseModel):
     pet_id: Optional[int] = None
     mother_pet_id: Optional[int] = None
+    father_id: Optional[int] = None
     mate_name: Optional[str] = None
     mating_date: str
     mating_method: Optional[str] = "natural"
@@ -66,7 +68,7 @@ async def get_breeding_records(
     )
 
     if pet_id:
-        query = query.filter(BreedingRecord.mother_id == pet_id)
+        query = query.filter(or_(BreedingRecord.mother_id == pet_id, BreedingRecord.father_id == pet_id))
     if status:
         query = query.filter(BreedingRecord.status == status)
 
@@ -76,10 +78,14 @@ async def get_breeding_records(
     result = []
     for record in records:
         mother = db.query(Pet).filter(Pet.id == record.mother_id).first()
+        father = db.query(Pet).filter(Pet.id == record.father_id).first() if record.father_id else None
         result.append({
             "id": record.id,
             "pet_id": record.mother_id,
-            "pet_name": mother.name if mother else None,
+            "mother_id": record.mother_id,
+            "mother_name": mother.name if mother else None,
+            "father_id": record.father_id,
+            "father_name": father.name if father else (record.father_name or record.mate_name),
             "mate_name": record.mate_name,
             "mating_date": format_datetime(record.mate_date),
             "due_date": format_datetime(record.due_date),
@@ -126,6 +132,7 @@ async def add_breeding_record(
     breeding = BreedingRecord(
         owner_id=current_user.id,
         mother_id=pet_id,
+        father_id=request.father_id,
         mate_name=request.mate_name,
         mate_date=datetime.strptime(request.mating_date, "%Y-%m-%d").date(),
         due_date=datetime.strptime(due_date, "%Y-%m-%d").date() if due_date else None,
