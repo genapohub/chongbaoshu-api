@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+load_dotenv()  # 必须在所有 import 之前加载环境变量
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,8 +19,6 @@ from routes.certificates import router as certificates_router
 from routes.export import router as export_router
 from routes.notifications import router as notifications_router
 from routes.feedback import router as feedback_router
-
-load_dotenv()
 
 app = FastAPI(
     title="宠宝树V1.1 API",
