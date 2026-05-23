@@ -3,18 +3,12 @@ import string
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from config.database import SessionLocal
+from config.database import get_db
 from models.user import User
 from middleware.auth import get_current_user, TokenData
+from utils.helpers import format_datetime
 
 router = APIRouter(prefix="/api/invite", tags=["invite"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def generate_invite_code(db: Session, length: int = 8) -> str:
     chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -72,16 +66,55 @@ async def redeem_invite_code(
     if existing:
         raise HTTPException(status_code=400, detail="已被邀请过，不能重复兑换")
     
+    from datetime import datetime, timedelta
+    # 使用本地时间避免时区问题
+    now = datetime.now()
+    expire_time = now + timedelta(days=7)
+    
     invite_record = InviteRecord(
         inviter_id=inviter.id,
         invitee_id=user.id,
         invite_code=request.code.upper(),
         status="redeemed",
         reward_days=7,
+        redeemed_at=now,
     )
     db.add(invite_record)
     
+    # 设置被邀请人的Pro会员
     user.subscription_tier = "pro"
+    user.subscription_source = "reward"
+    if user.subscription_expire:
+        # 统一转换为时间戳比较，避免时区问题
+        expire_ts = user.subscription_expire.timestamp() if hasattr(user.subscription_expire, 'timestamp') else user.subscription_expire
+        now_ts = now.timestamp()
+        if expire_ts > now_ts:
+            # 如果已有到期时间且在未来，在原有基础上延长7天
+            user.subscription_expire = user.subscription_expire + timedelta(days=7)
+        else:
+            # 已过期或为None，设置为当前时间+7天
+            user.subscription_expire = expire_time
+    else:
+        # 没有到期时间，设置为当前时间+7天
+        user.subscription_expire = expire_time
+    
+    # 设置邀请人的Pro会员奖励（邀请人也获得7天）
+    inviter.subscription_tier = "pro"
+    inviter.subscription_source = "reward"
+    if inviter.subscription_expire:
+        # 统一转换为时间戳比较，避免时区问题
+        expire_ts = inviter.subscription_expire.timestamp() if hasattr(inviter.subscription_expire, 'timestamp') else inviter.subscription_expire
+        now_ts = now.timestamp()
+        if expire_ts > now_ts:
+            # 如果已有到期时间且在未来，在原有基础上延长7天
+            inviter.subscription_expire = inviter.subscription_expire + timedelta(days=7)
+        else:
+            # 已过期或为None，设置为当前时间+7天
+            inviter.subscription_expire = expire_time
+    else:
+        # 没有到期时间，设置为当前时间+7天
+        inviter.subscription_expire = expire_time
+    
     db.commit()
     
     return {
@@ -112,11 +145,12 @@ async def get_invite_records(
             "id": record.id,
             "invitee_nickname": invitee.nickname if invitee else "未知用户",
             "invitee_avatar": invitee.avatar_url if invitee else None,
+            "invitee_created_at": format_datetime(invitee.created_at) if invitee else None,
             "invite_code": record.invite_code,
             "reward_days": record.reward_days,
             "status": record.status,
-            "redeemed_at": record.redeemed_at,
-            "created_at": record.created_at,
+            "redeemed_at": format_datetime(record.redeemed_at),
+            "created_at": format_datetime(record.created_at),
         })
     
     return {

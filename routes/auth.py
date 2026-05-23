@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
-from config.database import SessionLocal
+from config.database import get_db
 from models.user import User
 from models.pet import Pet
 from models.breeding_record import BreedingRecord
@@ -13,7 +13,7 @@ from models.health_record import HealthRecord
 from models.subscription import Subscription
 from models.verification_code import VerificationCode
 from middleware.auth import create_access_token, get_current_user, TokenData
-from utils.helpers import get_user_limits
+from utils.helpers import get_user_limits, format_datetime
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -21,15 +21,8 @@ ENV = os.getenv("ENV", "development")
 WX_APP_ID = os.getenv("WX_APP_ID", "")
 WX_APP_SECRET = os.getenv("WX_APP_SECRET", "")
 
-DEV_MODE = True  # 开发模式：跳过微信API验证，使用模拟openid
-DEV_OPENID = "dev_default_user"  # 开发模式固定用户openid
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"  # 通过环境变量控制，生产环境勿设为 true
+DEV_OPENID = os.getenv("DEV_OPENID", "dev_default_user")
 
 class WxLoginRequest(BaseModel):
     code: str
@@ -141,12 +134,6 @@ async def wx_login(request: WxLoginRequest, db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-def format_datetime(dt):
-    """格式化datetime为字符串"""
-    if dt:
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    return None
-
 @router.get("/profile")
 async def get_profile(
     current_user: TokenData = Depends(get_current_user),
@@ -170,6 +157,8 @@ async def get_profile(
             "main_breeds": user.main_breeds,
             "wechat": user.wechat,
             "subscription_tier": user.subscription_tier,
+            "subscription_expire": format_datetime(user.subscription_expire),
+            "subscription_source": user.subscription_source,
             "invite_code": user.invite_code,
             "remind_vaccine": user.remind_vaccine,
             "remind_deworm": user.remind_deworm,
@@ -397,8 +386,13 @@ async def send_verification_code(
     if not request.phone or len(request.phone) != 11:
         raise HTTPException(status_code=1001, detail="请输入正确的手机号")
     
-    code = "123456"  # 开发环境固定验证码
-    print(f"[DEV MODE] 验证码: {code}")
+    if DEV_MODE:
+        code = "123456"  # 开发环境固定验证码
+        print(f"[DEV MODE] 验证码: {code}")
+    else:
+        import random
+        code = f"{random.randint(100000, 999999)}"
+        # TODO: 接入短信服务商发送验证码
     
     verification = VerificationCode(
         phone=request.phone,

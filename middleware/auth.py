@@ -6,7 +6,12 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
-SECRET_KEY = os.getenv("JWT_SECRET", "chongbaoshu_dev_jwt_secret_2025")
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET 环境变量未设置，请检查 .env 文件")
+if SECRET_KEY == "chongbaoshu_dev_jwt_secret_2025":
+    import warnings
+    warnings.warn("⚠️ JWT_SECRET 仍为默认开发密钥，生产环境请务必替换为强随机串！")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 7 * 24 * 60
 

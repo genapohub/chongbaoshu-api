@@ -1,18 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
-from config.database import SessionLocal
+from config.database import get_db
 from models.notification import Notification
 from middleware.auth import get_current_user, TokenData
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("")
 async def get_notifications(

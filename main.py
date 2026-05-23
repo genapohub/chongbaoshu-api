@@ -26,10 +26,14 @@ app = FastAPI(
     redirect_slashes=False
 )
 
+# CORS 配置：从环境变量读取允许的来源域名
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
+ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ORIGINS.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True if ALLOWED_ORIGINS != ["*"] else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

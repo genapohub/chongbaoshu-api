@@ -2,18 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from routes.auth import get_current_user, TokenData
-from config.database import SessionLocal
+from config.database import get_db
 from sqlalchemy.orm import Session
 from models.feedback import Feedback
 
 router = APIRouter()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 class FeedbackRequest(BaseModel):
     content: str

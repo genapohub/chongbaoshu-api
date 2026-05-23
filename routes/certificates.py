@@ -3,20 +3,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime, date
-from config.database import SessionLocal
+from config.database import get_db
 from models.pet import Pet
 from models.pedigree_certificate import PedigreeCertificate
 from models.user import User
 from middleware.auth import get_current_user, TokenData
 
 router = APIRouter(prefix="/api", tags=["certificates"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 class CreateCertificateRequest(BaseModel):
     pet_id: int

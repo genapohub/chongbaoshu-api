@@ -3,10 +3,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Body
 from typing import Optional, List
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime
 
-from config.database import SessionLocal
+from config.database import get_db
 from models.user import User
 from models.pet import Pet
 from models.pet_photo import PetPhoto
@@ -15,13 +15,6 @@ from middleware.auth import get_current_user, TokenData
 from utils.helpers import get_user_limits
 
 router = APIRouter(prefix="/api/pets", tags=["pets"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 class CreatePetRequest(BaseModel):
     name: str
@@ -58,22 +51,45 @@ async def get_pets(
     total = query.count()
     pets = query.offset((page - 1) * pageSize).limit(pageSize).all()
     
+    # 批量预加载 photos 和 tags，避免 N+1 查询
+    pet_ids = [pet.id for pet in pets]
+    
+    if pet_ids:
+        all_photos = db.query(PetPhoto).filter(PetPhoto.pet_id.in_(pet_ids)).order_by(PetPhoto.pet_id, PetPhoto.sort_order).all()
+        all_tags = db.query(PetTag).filter(PetTag.pet_id.in_(pet_ids)).all()
+    else:
+        all_photos = []
+        all_tags = []
+    
+    # 按 pet_id 分组
+    photos_by_pet = {}
+    for p in all_photos:
+        photos_by_pet.setdefault(p.pet_id, []).append(p)
+    
+    tags_by_pet = {}
+    for t in all_tags:
+        tags_by_pet.setdefault(t.pet_id, []).append(t)
+    
+    # avatar_photo_id -> photo_url 的映射（从已加载的 photos 中查找）
+    avatar_ids = {pet.avatar_photo_id for pet in pets if pet.avatar_photo_id}
+    avatar_photos_map = {}
+    if avatar_ids:
+        for p in all_photos:
+            if p.id in avatar_ids:
+                avatar_photos_map[p.id] = p.photo_url
+    
     result = []
     for pet in pets:
-        all_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).order_by(PetPhoto.sort_order).all()
-        tags = db.query(PetTag).filter(PetTag.pet_id == pet.id).all()
+        pet_photos = photos_by_pet.get(pet.id, [])
+        tags = tags_by_pet.get(pet.id, [])
         
-        avatar_photo = None
-        if pet.avatar_photo_id:
-            avatar_photo_obj = db.query(PetPhoto).filter(PetPhoto.id == pet.avatar_photo_id).first()
-            if avatar_photo_obj:
-                avatar_photo = avatar_photo_obj.photo_url
+        avatar_photo = avatar_photos_map.get(pet.avatar_photo_id) if pet.avatar_photo_id else None
         
-        if not avatar_photo and all_photos:
-            avatar_photo = all_photos[0].photo_url
-            gallery_photos = all_photos[1:] if len(all_photos) > 1 else []
+        if not avatar_photo and pet_photos:
+            avatar_photo = pet_photos[0].photo_url
+            gallery_photos = pet_photos[1:] if len(pet_photos) > 1 else []
         else:
-            gallery_photos = [p for p in all_photos if p.id != pet.avatar_photo_id]
+            gallery_photos = [p for p in pet_photos if p.id != pet.avatar_photo_id]
         
         result.append({
             "id": pet.id,

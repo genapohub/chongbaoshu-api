@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
-from config.database import SessionLocal
+from config.database import get_db
 from models.pet import Pet
 from models.pet_photo import PetPhoto
 from models.user import User
@@ -11,13 +11,6 @@ from middleware.auth import get_current_user, TokenData
 from middleware.upload import delete_local_file, validate_file, save_file
 
 router = APIRouter(prefix="/api", tags=["photos"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.post("/photos")
 async def upload_photo(

@@ -3,20 +3,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
-from config.database import SessionLocal
+from config.database import get_db
 from models.health_record import HealthRecord
 from models.pet import Pet
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import calculate_next_date
 
 router = APIRouter(prefix="/api/health", tags=["health"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 class AddHealthRequest(BaseModel):
     pet_id: int

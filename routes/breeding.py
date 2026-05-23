@@ -3,29 +3,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, date, timedelta
-from config.database import SessionLocal
+from config.database import get_db
 from models.breeding_record import BreedingRecord
 from models.pet import Pet
 from middleware.auth import get_current_user, TokenData
+from utils.helpers import format_datetime
 
 router = APIRouter(prefix="/api/breeding", tags=["breeding"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def format_datetime(dt):
-    """格式化datetime为字符串"""
-    if dt:
-        if isinstance(dt, datetime):
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        elif isinstance(dt, date):
-            return dt.strftime("%Y-%m-%d")
-    return None
 
 
 def calculate_due_date(species: str, mating_date: str) -> str:

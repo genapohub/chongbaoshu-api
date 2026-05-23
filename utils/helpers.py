@@ -55,3 +55,12 @@ SUBSCRIPTION_PLANS = {
 
 def get_user_limits(tier: str) -> dict:
     return SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
+
+def format_datetime(dt) -> Optional[str]:
+    """格式化 datetime/date 为字符串，统一工具函数"""
+    if dt:
+        if isinstance(dt, datetime):
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        # 兼容 date 类型（不含时间部分）
+        return dt.strftime("%Y-%m-%d")
+    return None

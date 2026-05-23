@@ -3,20 +3,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
-from config.database import SessionLocal
+from config.database import get_db
 from models.user import User
 from models.pet import Pet
 from models.export_task import ExportTask
 from middleware.auth import get_current_user, TokenData
 
 router = APIRouter(prefix="/api/export", tags=["export"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 class CreateExportTaskRequest(BaseModel):
     type: str

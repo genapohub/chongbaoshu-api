@@ -3,29 +3,16 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timedelta
-from config.database import SessionLocal
+from config.database import get_db
 from models.subscription import Subscription
 from models.subscription_order import SubscriptionOrder
 from models.user import User
 from models.pet import Pet
 from models.breeding_record import BreedingRecord
 from middleware.auth import get_current_user, TokenData
+from utils.helpers import format_datetime
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscription"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def format_datetime(dt):
-    """格式化datetime为字符串"""
-    if dt:
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    return None
 
 @router.get("/current")
 async def get_current_subscription(
@@ -86,6 +73,7 @@ async def get_plans():
 
 class UpgradeRequest(BaseModel):
     tier: str
+    order_id: Optional[int] = None  # 已支付的订单ID，生产环境必传
 
 @router.post("/upgrade")
 async def upgrade_subscription(
@@ -101,12 +89,39 @@ async def upgrade_subscription(
     if not user:
         raise HTTPException(status_code=1002, detail="用户不存在")
     
+    # 支付验证：必须提供已支付订单
+    if request.tier != "free":
+        if not request.order_id:
+            raise HTTPException(status_code=1001, detail="升级订阅需提供有效订单ID，请先通过 /create 下单并完成支付")
+        
+        order = db.query(SubscriptionOrder).filter(
+            SubscriptionOrder.id == request.order_id,
+            SubscriptionOrder.user_id == user.id,
+        ).first()
+        if not order:
+            raise HTTPException(status_code=1001, detail="订单不存在")
+        if order.status != "paid":
+            raise HTTPException(status_code=1001, detail="订单尚未支付完成，无法升级")
+        if order.tier != request.tier:
+            raise HTTPException(status_code=1001, detail="订单等级与请求升级等级不一致")
+    
     user.subscription_tier = request.tier
-    db.commit()
+    if request.tier != "free":
+        user.subscription_source = "paid"
+        user.subscription_expire = datetime.now() + timedelta(days=30)
+    else:
+        user.subscription_source = None
+        user.subscription_expire = None
     
     subscription = db.query(Subscription).filter(Subscription.user_id == user.id).first()
     if subscription:
         subscription.tier = request.tier
+        if request.tier != "free":
+            subscription.status = "active"
+            subscription.expires_at = datetime.now() + timedelta(days=30)
+        else:
+            subscription.status = "cancelled"
+            subscription.expires_at = None
     
     db.commit()
     
@@ -178,6 +193,7 @@ async def pay_callback(
     user = db.query(User).filter(User.id == order.user_id).first()
     if user:
         user.subscription_tier = order.tier
+        user.subscription_source = "paid"
         if order.tier != "free":
             expires = datetime.now() + timedelta(days=30)
             user.subscription_expire = expires
@@ -246,9 +262,9 @@ async def get_payment_history(
     ).order_by(SubscriptionOrder.created_at.desc()).limit(20).all()
     
     plan_names = {
-        "basic": "Basic 月付",
+        "basic": "基础版 月付",
         "pro": "Pro 专业版",
-        "basic_yearly": "Basic 年付",
+        "basic_yearly": "基础版 年付",
         "pro_yearly": "Pro 年付",
     }
     

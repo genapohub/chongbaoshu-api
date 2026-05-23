@@ -29,6 +29,7 @@ class User(Base):
     notify_wechat = Column(Boolean, default=False, comment="微信推送开关")
     notify_sms = Column(Boolean, default=False, comment="短信通知开关")
     invite_code = Column(String(20), unique=True, nullable=True, comment="邀请码")
+    subscription_source = Column(String(20), default=None, nullable=True, comment="订阅来源: paid/reward/none")
     is_active = Column(Boolean, default=True, comment="是否活跃")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
