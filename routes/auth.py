@@ -394,9 +394,13 @@ async def send_verification_code(
         code = f"{random.randint(100000, 999999)}"
         # TODO: 接入短信服务商发送验证码
     
+    from datetime import timedelta
+    expires_at = datetime.now() + timedelta(minutes=5)
+    
     verification = VerificationCode(
         phone=request.phone,
         code=code,
+        expires_at=expires_at,
     )
     db.add(verification)
     db.commit()
