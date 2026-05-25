@@ -48,9 +48,9 @@ FREE_LIMITS = {
 }
 
 SUBSCRIPTION_PLANS = {
-    "free": dict(list(FREE_LIMITS.items()) + [("price", 0), ("name", "免费版")]),
-    "basic": {"maxPets": 100, "maxPhotosPerPet": 20, "maxBreedingRecords": 50, "price": 49, "name": "基础版"},
-    "pro": {"maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreedingRecords": "unlimited", "price": 149, "name": "专业版"},
+    "free": dict(list(FREE_LIMITS.items()) + [("price", 0), ("yearly_price", 0), ("name", "免费版")]),
+    "basic": {"maxPets": 100, "maxPhotosPerPet": 20, "maxBreedingRecords": 50, "price": 49, "yearly_price": 39, "name": "基础版"},
+    "pro": {"maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreedingRecords": "unlimited", "price": 149, "yearly_price": 119, "name": "专业版"},
 }
 
 def get_user_limits(tier: str) -> dict:

@@ -127,6 +127,14 @@ class TestSubscriptionOrder:
         data = resp.json()["data"]
         assert data["price"] == 149.0
 
+    def test_create_order_pro_yearly(self, auth_client):
+        """Pro 年付订单总价应为 119×12=1428"""
+        resp = auth_client.post("/api/subscriptions/create", json={"tier": "pro", "cycle": "yearly"})
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["price"] == 1428.0
+        assert data["cycle"] == "yearly"
+
     def test_create_order_unauthenticated(self, client):
         resp = client.post("/api/subscriptions/create", json={"tier": "basic"})
         assert resp.status_code == 401
