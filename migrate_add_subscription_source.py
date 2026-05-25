@@ -1,4 +1,6 @@
 """
+[已废弃] 此脚本已被 Alembic 迁移管理接管。请使用 ./migrate.sh upgrade 执行迁移。
+---
 添加 subscription_source 字段到 users 表的迁移脚本
 """
 from sqlalchemy import text

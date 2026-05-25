@@ -1,0 +1,70 @@
+sequenceDiagram
+    participant C as 微信小程序客户端
+    participant MW as 中间件层
+    participant R as 路由层(routes)
+    participant S as 工具层(utils)
+    participant DB as 数据库(SQLite/MySQL)
+
+    Note over C,DB: 请求全流程（含安全+性能加固）
+
+    C->>MW: HTTP请求 (带Token)
+    MW->>MW: SecurityHeadersMiddleware (添加安全头)
+    MW->>MW: GZipMiddleware (压缩响应)
+    MW->>MW: BodyLimitMiddleware (检查请求体≤10MB)
+    MW->>MW: SlowAPIMiddleware (速率限制60/min)
+    MW->>MW: AuthMiddleware (JWT校验)
+
+    alt 速率超限
+        MW-->>C: 429 Too Many Requests
+    end
+
+    alt 请求体过大
+        MW-->>C: 413 Payload Too Large
+    end
+
+    alt Token无效
+        MW-->>C: 401 Unauthorized
+    end
+
+    MW->>R: 转发到路由处理
+
+    alt 文件上传
+        R->>S: validate_file() 扩展名+MIME校验
+        R->>S: validate_file_magic() 文件头校验
+        alt Magic不匹配
+            S-->>R: 校验失败
+            R-->>C: 400 Invalid File
+        end
+        R->>S: save_file() 保存文件
+    end
+
+    alt 用户输入(nickname/feedback等)
+        R->>S: sanitize_string() XSS过滤
+        R->>R: 处理清洗后的数据
+    end
+
+    alt 列表查询
+        R->>S: paginate(query, page, page_size)
+        S->>DB: SELECT ... OFFSET LIMIT (走索引)
+        DB-->>S: 结果集
+        S-->>R: {items, total, page, pages}
+    end
+
+    R-->>MW: 响应数据
+    MW->>MW: sanitize_log() 日志脱敏
+    MW->>MW: GZip压缩
+    MW->>MW: 添加安全响应头
+    MW-->>C: HTTP响应 (含安全头+压缩)
+
+    Note over C,DB: send-code 速率限制特殊流程
+
+    C->>MW: POST /auth/send-code
+    MW->>MW: SlowAPIMiddleware 全局60/min检查
+    MW->>R: 转发到 send_code
+    R->>R: @limiter.limit("1/minute") 手机号级限流
+    alt 超过1次/分钟
+        R-->>C: 429 Rate Limited
+    end
+    R->>S: 生成验证码
+    S->>DB: 存储验证码
+    R-->>C: 200 发送成功

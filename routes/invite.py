@@ -1,5 +1,6 @@
 import random
 import string
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -46,6 +47,9 @@ async def redeem_invite_code(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Sentry：设置邀请流程 tags
+    sentry_sdk.set_tag("flow", "invite")
+
     if not request.code:
         raise HTTPException(status_code=400, detail="邀请码不能为空")
     
@@ -68,7 +72,7 @@ async def redeem_invite_code(
     
     from datetime import datetime, timedelta
     # 使用本地时间避免时区问题
-    now = datetime.now()
+    now = datetime.utcnow()
     expire_time = now + timedelta(days=7)
     
     invite_record = InviteRecord(

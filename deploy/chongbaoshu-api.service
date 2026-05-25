@@ -1,0 +1,55 @@
+[Unit]
+Description=ChongBaoShu API Server (宠宝树后端服务)
+Documentation=https://github.com/chongbaoshu/chongbaoshu-api
+After=network-online.target sqlite.database.service mysql.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/chongbaoshu-api
+
+# 环境变量
+EnvironmentFile=-/opt/chongbaoshu-api/.env
+Environment=PYTHONPATH=/opt/chongbaoshu-api
+Environment=ENV=production
+
+# 进程启动命令
+ExecStart=/opt/chongbaoshu-api/venv/bin/uvicorn main:app \
+    --host 0.0.0.0 \
+    --port 3000 \
+    --workers 2 \
+    --log-level info \
+    --access-log \
+    --proxy-headers
+
+# 自动重启策略
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# 进程管理
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+TimeoutStartSec=60
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/chongbaoshu-api/uploads /opt/chongbaoshu-api/logs /opt/chongbaoshu-api/database.sqlite
+
+# 日志输出
+StandardOutput=append:/opt/chongbaoshu-api/logs/stdout.log
+StandardError=append:/opt/chongbaoshu-api/logs/stderr.log
+SyslogIdentifier=chongbaoshu-api
+
+[Install]
+WantedBy=multi-user.target

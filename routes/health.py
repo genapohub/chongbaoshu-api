@@ -93,7 +93,7 @@ async def get_reminders(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    today = datetime.now().date()
+    today = datetime.utcnow().date()
     end_date = today + timedelta(days=days)
     
     health_records = db.query(HealthRecord).filter(
@@ -120,6 +120,45 @@ async def get_reminders(
             "dueReminders": [],
         }
     }
+
+@router.get("/{record_id}")
+async def get_health_record(
+    record_id: int,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取单条健康记录详情"""
+    record = db.query(HealthRecord).filter(
+        HealthRecord.id == record_id,
+        HealthRecord.owner_id == current_user.id,
+        HealthRecord.is_deleted == False
+    ).first()
+    if not record:
+        raise HTTPException(status_code=1001, detail="健康记录不存在")
+
+    pet = db.query(Pet).filter(Pet.id == record.pet_id).first()
+
+    return {
+        "code": 0,
+        "data": {
+            "id": record.id,
+            "pet_id": record.pet_id,
+            "pet_name": pet.name if pet else None,
+            "type": record.type,
+            "vaccine_type": record.vaccine_type,
+            "deworm_type": record.deworm_type,
+            "medicine_name": record.medicine_name,
+            "dosage": record.dosage,
+            "batch_no": record.batch_no,
+            "vaccine_round": record.vaccine_round,
+            "vet_hospital": record.vet_hospital,
+            "record_date": str(record.record_date) if record.record_date else None,
+            "next_date": str(record.next_date) if record.next_date else None,
+            "notes": record.notes,
+            "created_at": str(record.created_at) if record.created_at else None,
+        }
+    }
+
 
 @router.post("")
 async def add_health_record(

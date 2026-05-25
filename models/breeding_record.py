@@ -7,8 +7,8 @@ class BreedingRecord(Base):
     __tablename__ = "breeding_records"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="主人ID")
-    mother_id = Column(Integer, ForeignKey("pets.id"), nullable=False, comment="母犬ID")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="主人ID")
+    mother_id = Column(Integer, ForeignKey("pets.id"), nullable=False, index=True, comment="母犬ID")
     father_id = Column(Integer, ForeignKey("pets.id"), nullable=True, comment="父犬ID")
     father_name = Column(String(50), nullable=True, comment="父犬名称（外部）")
     father_breed = Column(String(50), nullable=True, comment="父犬品种")

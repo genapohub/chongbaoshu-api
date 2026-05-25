@@ -7,8 +7,8 @@ class HealthRecord(Base):
     __tablename__ = "health_records"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    pet_id = Column(Integer, ForeignKey("pets.id"), nullable=False, comment="宠物ID")
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="主人ID")
+    pet_id = Column(Integer, ForeignKey("pets.id"), nullable=False, index=True, comment="宠物ID")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="主人ID")
     type = Column(String(20), nullable=False, comment="记录类型")
     vaccine_type = Column(String(50), nullable=True, comment="疫苗类型")
     record_date = Column(Date, nullable=False, comment="记录日期")

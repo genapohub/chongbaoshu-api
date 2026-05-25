@@ -8,6 +8,7 @@ from models.user import User
 from models.pet import Pet
 from models.export_task import ExportTask
 from middleware.auth import get_current_user, TokenData
+from utils.helpers import get_effective_tier
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -46,7 +47,7 @@ async def create_export_task(
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
-    if user.subscription_tier != "pro":
+    if get_effective_tier(user) != "pro":
         raise HTTPException(status_code=403, detail="数据导出仅Pro用户可用")
     
     valid_types = ["pets", "breeding", "health", "all"]

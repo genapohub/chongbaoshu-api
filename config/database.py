@@ -10,10 +10,21 @@ if os.getenv("DB_DIALECT") == "mysql":
 else:
     DB_URL = f"sqlite:///{os.getenv('DB_STORAGE', './database.sqlite')}"
 
-engine = create_engine(
-    DB_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DB_URL else {}
-)
+if os.getenv("DB_DIALECT") == "mysql":
+    engine = create_engine(
+        DB_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+    )
+else:
+    engine = create_engine(
+        DB_URL,
+        connect_args={"check_same_thread": False},
+        pool_size=5,
+        pool_pre_ping=True,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

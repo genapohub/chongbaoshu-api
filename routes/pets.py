@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from typing import Optional, List
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func as sa_func
 from datetime import datetime
 
 from config.database import get_db
@@ -12,7 +13,8 @@ from models.pet import Pet
 from models.pet_photo import PetPhoto
 from models.pet_tag import PetTag
 from middleware.auth import get_current_user, TokenData
-from utils.helpers import get_user_limits
+from utils.helpers import get_user_limits, get_effective_tier
+from utils.sanitize import sanitize_string
 
 router = APIRouter(prefix="/api/pets", tags=["pets"])
 
@@ -107,6 +109,7 @@ async def get_pets(
             "tags": [t.tag for t in tags],
             "birth_date": pet.birth_date,
             "updated_at": pet.updated_at,
+            "platform_cert_no": pet.platform_cert_no,
         })
     
     return {
@@ -147,7 +150,7 @@ async def create_pet(
     if not user:
         raise HTTPException(status_code=1002, detail="用户不存在")
     
-    limits = get_user_limits(user.subscription_tier)
+    limits = get_user_limits(get_effective_tier(user))
     
     current_pets = db.query(Pet).filter(
         Pet.owner_id == current_user.id,
@@ -161,21 +164,21 @@ async def create_pet(
     
     pet = Pet(
         owner_id=current_user.id,
-        name=name,
+        name=sanitize_string(name),
         species=species,
-        breed=breed,
+        breed=sanitize_string(breed) if breed else None,
         gender=gender,
         birth_date=datetime.fromisoformat(birth_date) if birth_date else None,
-        color=color,
-        chip_no=chip_number,
-        father_name=father_name,
-        father_breed=father_breed,
-        grandfather_p_name=grandfather_p_name,
-        grandmother_p_name=grandmother_p_name,
-        mother_name=mother_name,
-        mother_breed=mother_breed,
-        grandfather_m_name=grandfather_m_name,
-        grandmother_m_name=grandmother_m_name,
+        color=sanitize_string(color) if color else None,
+        chip_no=sanitize_string(chip_number) if chip_number else None,
+        father_name=sanitize_string(father_name) if father_name else None,
+        father_breed=sanitize_string(father_breed) if father_breed else None,
+        grandfather_p_name=sanitize_string(grandfather_p_name) if grandfather_p_name else None,
+        grandmother_p_name=sanitize_string(grandmother_p_name) if grandmother_p_name else None,
+        mother_name=sanitize_string(mother_name) if mother_name else None,
+        mother_breed=sanitize_string(mother_breed) if mother_breed else None,
+        grandfather_m_name=sanitize_string(grandfather_m_name) if grandfather_m_name else None,
+        grandmother_m_name=sanitize_string(grandmother_m_name) if grandmother_m_name else None,
         role=role,
         status="active",
     )
@@ -189,18 +192,27 @@ async def create_pet(
     
     avatar_photo = None
     if avatar:
+        from middleware.upload import validate_file, MAX_FILE_SIZE
+        
+        validate_file(avatar)
+        
+        content = await avatar.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=1001, detail="头像文件大小超过限制（最大5MB）")
+        
         import os
         from uuid import uuid4
+        from pathlib import Path
         
         upload_dir = "uploads/pets"
         os.makedirs(upload_dir, exist_ok=True)
         
-        file_ext = avatar.filename.split(".")[-1] if "." in avatar.filename else "jpg"
-        file_name = f"{uuid4().hex}.{file_ext}"
+        file_ext = Path(avatar.filename).suffix.lower() if avatar.filename else ".jpg"
+        file_name = f"{uuid4().hex}{file_ext}"
         file_path = f"{upload_dir}/{file_name}"
         
         with open(file_path, "wb") as f:
-            f.write(await avatar.read())
+            f.write(content)
         
         photo = PetPhoto(
             pet_id=pet.id,
@@ -266,6 +278,7 @@ async def get_pet(
             "avatar_photo": avatar_photo,
             "photos": [{"id": p.id, "photo_url": p.photo_url, "sort_order": p.sort_order} for p in gallery_photos],
             "tags": [t.tag for t in tags],
+            "platform_cert_no": pet.platform_cert_no,
             "created_at": pet.created_at,
             "updated_at": pet.updated_at,
         }
@@ -301,35 +314,35 @@ async def update_pet(
         raise HTTPException(status_code=404, detail="宠物不存在")
     
     if request.name is not None:
-        pet.name = request.name
+        pet.name = sanitize_string(request.name)
     if request.species is not None:
         pet.species = request.species
     if request.breed is not None:
-        pet.breed = request.breed
+        pet.breed = sanitize_string(request.breed)
     if request.gender is not None:
         pet.gender = request.gender
     if request.birth_date is not None:
         pet.birth_date = datetime.fromisoformat(request.birth_date) if request.birth_date else None
     if request.color is not None:
-        pet.color = request.color
+        pet.color = sanitize_string(request.color)
     if request.chip_no is not None:
-        pet.chip_no = request.chip_no
+        pet.chip_no = sanitize_string(request.chip_no)
     if request.father_name is not None:
-        pet.father_name = request.father_name
+        pet.father_name = sanitize_string(request.father_name)
     if request.father_breed is not None:
-        pet.father_breed = request.father_breed
+        pet.father_breed = sanitize_string(request.father_breed)
     if request.grandfather_p_name is not None:
-        pet.grandfather_p_name = request.grandfather_p_name
+        pet.grandfather_p_name = sanitize_string(request.grandfather_p_name)
     if request.grandmother_p_name is not None:
-        pet.grandmother_p_name = request.grandmother_p_name
+        pet.grandmother_p_name = sanitize_string(request.grandmother_p_name)
     if request.mother_name is not None:
-        pet.mother_name = request.mother_name
+        pet.mother_name = sanitize_string(request.mother_name)
     if request.mother_breed is not None:
-        pet.mother_breed = request.mother_breed
+        pet.mother_breed = sanitize_string(request.mother_breed)
     if request.grandfather_m_name is not None:
-        pet.grandfather_m_name = request.grandfather_m_name
+        pet.grandfather_m_name = sanitize_string(request.grandfather_m_name)
     if request.grandmother_m_name is not None:
-        pet.grandmother_m_name = request.grandmother_m_name
+        pet.grandmother_m_name = sanitize_string(request.grandmother_m_name)
     
     if request.tags is not None:
         db.query(PetTag).filter(PetTag.pet_id == pet.id).delete()
@@ -359,6 +372,61 @@ async def delete_pet(
     return {
         "code": 0,
         "data": {}
+    }
+
+@router.post("/{pet_id}/assign-cert-no")
+async def assign_cert_no(
+    pet_id: int,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """为宠物分配平台认证编号，格式：CBS-P-{year}-{seq:05d}"""
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=1002, detail="用户不存在")
+
+    if get_effective_tier(user) != "pro":
+        raise HTTPException(status_code=2001, detail="仅 Pro 用户可分配平台认证编号")
+
+    pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
+    if not pet:
+        raise HTTPException(status_code=404, detail="宠物不存在")
+
+    # 幂等：若已有认证编号，直接返回
+    if pet.platform_cert_no:
+        return {
+            "code": 0,
+            "data": {"platform_cert_no": pet.platform_cert_no}
+        }
+
+    # 生成年份前缀
+    year = datetime.now().year
+    prefix = f"CBS-P-{year}-"
+
+    # 查询当年已分配的最大序号
+    max_cert_no = db.query(sa_func.max(Pet.platform_cert_no)).filter(
+        Pet.platform_cert_no.like(f"{prefix}%")
+    ).scalar()
+
+    if max_cert_no:
+        # 解析序号部分
+        try:
+            last_seq = int(max_cert_no.split("-")[-1])
+        except (ValueError, IndexError):
+            last_seq = 0
+        next_seq = last_seq + 1
+    else:
+        next_seq = 1
+
+    new_cert_no = f"{prefix}{next_seq:05d}"
+
+    pet.platform_cert_no = new_cert_no
+    db.commit()
+    db.refresh(pet)
+
+    return {
+        "code": 0,
+        "data": {"platform_cert_no": pet.platform_cert_no}
     }
 
 @router.get("/{pet_id}/pedigree")
@@ -401,6 +469,9 @@ async def get_pedigree(
         "breed": pet.breed,
         "color": pet.color,
         "chip_number": pet.chip_no,
+        "birth_date": pet.birth_date.isoformat() if pet.birth_date else None,
+        "registration_number": pet.chip_no,
+        "platform_cert_no": pet.platform_cert_no,
         # 父亲
         "father_id": pet.father_id,
         "father_name": pet.father_name or (father.name if father else None),
@@ -452,20 +523,23 @@ async def get_pedigree(
         # 额外信息
         "kennel_name": user.kennel_name,
         "generation": generation,
-        "is_pro": user.subscription_tier == "pro",
+        "is_pro": get_effective_tier(user) == "pro",
     }
     
     # 非Pro用户隐藏详细信息
-    if user.subscription_tier != "pro":
+    if get_effective_tier(user) != "pro":
         return {
             "code": 0,
             "data": {
                 "pet_id": pet.id,
                 "pet_name": pet.name,
                 "registration_name": None,
-                "registration_number": None,
+                "registration_number": pet.chip_no,
+                "platform_cert_no": pet.platform_cert_no,
                 "kennel_name": user.kennel_name,
                 "color": pet.color,
+                "chip_number": pet.chip_no,
+                "birth_date": pet.birth_date.isoformat() if pet.birth_date else None,
                 "father_name": None,
                 "mother_name": None,
                 "father_father_name": None,

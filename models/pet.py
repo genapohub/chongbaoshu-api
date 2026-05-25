@@ -7,7 +7,7 @@ class Pet(Base):
     __tablename__ = "pets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="主人ID")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="主人ID")
     name = Column(String(50), nullable=False, comment="宠物名")
     species = Column(String(20), nullable=False, comment="物种")
     breed = Column(String(50), nullable=True, comment="品种")
@@ -28,6 +28,7 @@ class Pet(Base):
     mother_breed = Column(String(50), nullable=True, comment="母亲品种")
     grandfather_m_name = Column(String(50), nullable=True, comment="外祖父名（母系）")
     grandmother_m_name = Column(String(50), nullable=True, comment="外祖母名（母系）")
+    platform_cert_no = Column(String(30), nullable=True, unique=True, comment="平台认证编号")
     breeding_record_id = Column(Integer, ForeignKey("breeding_records.id"), nullable=True, comment="来源繁育记录ID")
     is_neutered = Column(Boolean, default=False, comment="是否绝育")
     is_deleted = Column(Boolean, default=False, comment="软删除标记")

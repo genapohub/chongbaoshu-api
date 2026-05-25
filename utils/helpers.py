@@ -56,6 +56,15 @@ SUBSCRIPTION_PLANS = {
 def get_user_limits(tier: str) -> dict:
     return SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
 
+def get_effective_tier(user) -> str:
+    """返回用户当前有效的订阅等级。到期自动返回 'free'。"""
+    if user.subscription_tier == "free":
+        return "free"
+    if user.subscription_expire and user.subscription_expire < datetime.utcnow():
+        return "free"
+    return user.subscription_tier
+
+
 def format_datetime(dt) -> Optional[str]:
     """格式化 datetime/date 为字符串，统一工具函数"""
     if dt:

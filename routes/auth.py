@@ -1,10 +1,11 @@
 import os
 import hashlib
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile, Request
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
+import sentry_sdk
 from config.database import get_db
 from models.user import User
 from models.pet import Pet
@@ -13,9 +14,15 @@ from models.health_record import HealthRecord
 from models.subscription import Subscription
 from models.verification_code import VerificationCode
 from middleware.auth import create_access_token, get_current_user, TokenData
-from utils.helpers import get_user_limits, format_datetime
+from utils.helpers import get_user_limits, format_datetime, get_effective_tier
+from utils.sanitize import sanitize_string
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# ── 限流器（auth 路由专用） ────────────────────────────────
+_limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 ENV = os.getenv("ENV", "development")
 WX_APP_ID = os.getenv("WX_APP_ID", "")
@@ -81,25 +88,30 @@ def get_or_create_user(db: Session, openid: str, unionid: Optional[str] = None):
     return user, is_new
 
 @router.post("/wx-login")
-async def wx_login(request: WxLoginRequest, db: Session = Depends(get_db)):
-    if not request.code:
+@_limiter.limit("10/minute")
+async def wx_login(request: Request, req: WxLoginRequest, db: Session = Depends(get_db)):
+    # Sentry：设置登录流程 tags
+    sentry_sdk.set_tag("flow", "login")
+    sentry_sdk.set_tag("login_method", "wx")
+
+    if not req.code:
         raise HTTPException(status_code=1001, detail="缺少微信登录code")
-    
+
     try:
         if DEV_MODE:
             # 开发模式：使用固定openid，保持用户数据持久化
             user, is_new = get_or_create_user(db, DEV_OPENID, None)
-            
+
             if not user.nickname:
                 user.nickname = "开发者"
                 db.commit()
                 db.refresh(user)
-            
+
             print(f"[DEV MODE] 模拟登录: {DEV_OPENID}, is_new={is_new}")
         else:
             # 生产模式：调用真实微信API
             from utils.wechat import code2session
-            result = code2session(request.code)
+            result = code2session(req.code)
             openid = result["openid"]
             unionid = result.get("unionid")
             user, is_new = get_or_create_user(db, openid, unionid)
@@ -107,8 +119,12 @@ async def wx_login(request: WxLoginRequest, db: Session = Depends(get_db)):
         access_token = create_access_token({
             "id": user.id,
             "openid": user.openid,
-            "subscription_tier": user.subscription_tier,
+            "subscription_tier": get_effective_tier(user),
         })
+        
+        # Sentry：设置用户上下文和订阅等级标签
+        sentry_sdk.set_user({"id": str(user.id), "openid": user.openid or ""})
+        sentry_sdk.set_tag("subscription_tier", get_effective_tier(user))
         
         return {
             "code": 0,
@@ -121,7 +137,7 @@ async def wx_login(request: WxLoginRequest, db: Session = Depends(get_db)):
                     "avatar_url": user.avatar_url,
                     "phone": user.phone,
                     "kennel_name": user.kennel_name,
-                    "subscription_tier": user.subscription_tier,
+                    "subscription_tier": get_effective_tier(user),
                 },
                 "isNew": is_new,
             }
@@ -156,7 +172,7 @@ async def get_profile(
             "kennel_logo": user.kennel_logo,
             "main_breeds": user.main_breeds,
             "wechat": user.wechat,
-            "subscription_tier": user.subscription_tier,
+            "subscription_tier": get_effective_tier(user),
             "subscription_expire": format_datetime(user.subscription_expire),
             "subscription_source": user.subscription_source,
             "invite_code": user.invite_code,
@@ -200,21 +216,21 @@ async def update_profile(
         raise HTTPException(status_code=404, detail="用户不存在")
     
     if nickname is not None:
-        user.nickname = nickname
+        user.nickname = sanitize_string(nickname)
     if avatar_url is not None:
         user.avatar_url = avatar_url
     if phone is not None:
         user.phone = phone
     if kennel_name is not None:
-        user.kennel_name = kennel_name
+        user.kennel_name = sanitize_string(kennel_name)
     if kennel_address is not None:
-        user.kennel_address = kennel_address
+        user.kennel_address = sanitize_string(kennel_address)
     if kennel_intro is not None:
-        user.kennel_intro = kennel_intro
+        user.kennel_intro = sanitize_string(kennel_intro)
     if main_breeds is not None:
-        user.main_breeds = main_breeds
+        user.main_breeds = sanitize_string(main_breeds)
     if wechat is not None:
-        user.wechat = wechat
+        user.wechat = sanitize_string(wechat)
     if remind_vaccine is not None:
         user.remind_vaccine = remind_vaccine
     if remind_deworm is not None:
@@ -233,18 +249,27 @@ async def update_profile(
         user.notify_wechat = notify_wechat
     
     if kennel_logo is not None:
+        from middleware.upload import validate_file, MAX_FILE_SIZE
+        
+        validate_file(kennel_logo)
+        
+        content = await kennel_logo.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=1001, detail="犬舍Logo文件大小超过限制（最大5MB）")
+        
         import os
         from uuid import uuid4
+        from pathlib import Path
         
         upload_dir = "uploads/kennel"
         os.makedirs(upload_dir, exist_ok=True)
         
-        file_ext = kennel_logo.filename.split(".")[-1] if "." in kennel_logo.filename else "jpg"
-        file_name = f"{uuid4().hex}.{file_ext}"
+        file_ext = Path(kennel_logo.filename).suffix.lower() if kennel_logo.filename else ".jpg"
+        file_name = f"{uuid4().hex}{file_ext}"
         file_path = f"{upload_dir}/{file_name}"
         
         with open(file_path, "wb") as f:
-            f.write(await kennel_logo.read())
+            f.write(content)
         
         user.kennel_logo = f"/{file_path}"
     
@@ -264,7 +289,7 @@ async def update_profile(
             "kennel_logo": user.kennel_logo,
             "main_breeds": user.main_breeds,
             "wechat": user.wechat,
-            "subscription_tier": user.subscription_tier,
+            "subscription_tier": get_effective_tier(user),
             "remind_vaccine": user.remind_vaccine,
             "remind_deworm": user.remind_deworm,
             "remind_due": user.remind_due,
@@ -287,7 +312,7 @@ async def get_dashboard(
     breeding_count = db.query(BreedingRecord).filter(BreedingRecord.owner_id == current_user.id, BreedingRecord.is_deleted == False).count()
     health_count = db.query(HealthRecord).filter(HealthRecord.owner_id == current_user.id).count()
     
-    limits = get_user_limits(user.subscription_tier)
+    limits = get_user_limits(get_effective_tier(user))
     
     # 获取健康提醒数据
     upcoming_reminders = []
@@ -387,7 +412,7 @@ async def get_dashboard(
                 "id": user.id,
                 "nickname": user.nickname or "用户",
                 "avatar_url": user.avatar_url,
-                "subscription_tier": user.subscription_tier,
+                "subscription_tier": get_effective_tier(user),
             },
             "stats": {
                 "petCount": pet_count,
@@ -410,7 +435,7 @@ async def get_limits(
     if not user:
         raise HTTPException(status_code=1002, detail="用户不存在")
     
-    limits = get_user_limits(user.subscription_tier)
+    limits = get_user_limits(get_effective_tier(user))
     
     current_pets = db.query(Pet).filter(Pet.owner_id == current_user.id, Pet.is_deleted == False).count()
     
@@ -428,7 +453,7 @@ async def get_limits(
     return {
         "code": 0,
         "data": {
-            "tier": user.subscription_tier,
+            "tier": get_effective_tier(user),
             "maxPets": get_limit_value(limits["maxPets"]),
             "maxBreedingRecords": get_limit_value(limits.get("maxBreedingRecords", limits.get("maxBreedings", 3))),
             "currentPets": current_pets,
@@ -437,13 +462,13 @@ async def get_limits(
     }
 
 @router.post("/send-code")
+@_limiter.limit("1/minute")
 async def send_verification_code(
-    request: SendCodeRequest,
-    db: Session = Depends(get_db)
+    request: Request, req: SendCodeRequest, db: Session = Depends(get_db)
 ):
-    if not request.phone or len(request.phone) != 11:
+    if not req.phone or len(req.phone) != 11:
         raise HTTPException(status_code=1001, detail="请输入正确的手机号")
-    
+
     if DEV_MODE:
         code = "123456"  # 开发环境固定验证码
         print(f"[DEV MODE] 验证码: {code}")
@@ -453,10 +478,10 @@ async def send_verification_code(
         # TODO: 接入短信服务商发送验证码
     
     from datetime import timedelta
-    expires_at = datetime.now() + timedelta(minutes=5)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
     
     verification = VerificationCode(
-        phone=request.phone,
+        phone=req.phone,
         code=code,
         expires_at=expires_at,
     )
@@ -469,25 +494,45 @@ async def send_verification_code(
     }
 
 @router.post("/phone-login")
-async def phone_login(request: PhoneLoginRequest, db: Session = Depends(get_db)):
-    if not request.phone or not request.code:
+@_limiter.limit("10/minute")
+async def phone_login(request: Request, req: PhoneLoginRequest, db: Session = Depends(get_db)):
+    # Sentry：设置登录流程 tags
+    sentry_sdk.set_tag("flow", "login")
+    sentry_sdk.set_tag("login_method", "phone")
+
+    if not req.phone or not req.code:
         raise HTTPException(status_code=1001, detail="请输入手机号和验证码")
-    
+
+    # 暴力破解防护：检查最近5分钟内失败次数
+    from datetime import timedelta as _td
+    five_min_ago = datetime.utcnow() - _td(minutes=5)
+    failed_count = db.query(VerificationCode).filter(
+        VerificationCode.phone == req.phone,
+        VerificationCode.is_used == False,
+        VerificationCode.created_at >= five_min_ago,
+    ).count()
+    if failed_count >= 5:
+        raise HTTPException(status_code=1001, detail="验证码错误次数过多，请5分钟后重试")
+
     # 开发模式：支持默认验证码123456直接登录（无需先发送验证码）
-    if DEV_MODE and request.code == "123456":
-        print(f"[DEV MODE] 使用默认验证码登录: {request.phone}")
-        user, is_new = get_or_create_user(db, f"phone_{request.phone}", None)
-        
+    if DEV_MODE and req.code == "123456":
+        print(f"[DEV MODE] 使用默认验证码登录: {req.phone}")
+        user, is_new = get_or_create_user(db, f"phone_{req.phone}", None)
+
         if not user.phone:
-            user.phone = request.phone
+            user.phone = req.phone
             db.commit()
             db.refresh(user)
         
         access_token = create_access_token({
             "id": user.id,
             "openid": user.openid,
-            "subscription_tier": user.subscription_tier,
+            "subscription_tier": get_effective_tier(user),
         })
+        
+        # Sentry：设置用户上下文和订阅等级标签
+        sentry_sdk.set_user({"id": str(user.id), "openid": user.openid or ""})
+        sentry_sdk.set_tag("subscription_tier", get_effective_tier(user))
         
         return {
             "code": 0,
@@ -500,7 +545,7 @@ async def phone_login(request: PhoneLoginRequest, db: Session = Depends(get_db))
                     "avatar_url": user.avatar_url,
                     "phone": user.phone,
                     "kennel_name": user.kennel_name,
-                    "subscription_tier": user.subscription_tier,
+                    "subscription_tier": get_effective_tier(user),
                 },
                 "isNew": is_new,
             }
@@ -508,32 +553,36 @@ async def phone_login(request: PhoneLoginRequest, db: Session = Depends(get_db))
     
     # 生产模式：正常验证码校验
     verification = db.query(VerificationCode).filter(
-        VerificationCode.phone == request.phone,
-        VerificationCode.code == request.code,
+        VerificationCode.phone == req.phone,
+        VerificationCode.code == req.code,
         VerificationCode.is_used == False
     ).order_by(VerificationCode.created_at.desc()).first()
-    
+
     if not verification:
         raise HTTPException(status_code=1001, detail="验证码错误或已失效")
-    
-    if (datetime.now() - verification.created_at).total_seconds() > 300:
+
+    if (datetime.utcnow() - verification.created_at).total_seconds() > 300:
         raise HTTPException(status_code=1001, detail="验证码已过期")
-    
+
     verification.is_used = True
     db.commit()
-    
-    user, is_new = get_or_create_user(db, f"phone_{request.phone}", None)
-    
+
+    user, is_new = get_or_create_user(db, f"phone_{req.phone}", None)
+
     if not user.phone:
-        user.phone = request.phone
+        user.phone = req.phone
         db.commit()
         db.refresh(user)
     
     access_token = create_access_token({
         "id": user.id,
         "openid": user.openid,
-        "subscription_tier": user.subscription_tier,
+        "subscription_tier": get_effective_tier(user),
     })
+    
+    # Sentry：设置用户上下文和订阅等级标签
+    sentry_sdk.set_user({"id": str(user.id), "openid": user.openid or ""})
+    sentry_sdk.set_tag("subscription_tier", get_effective_tier(user))
     
     return {
         "code": 0,
@@ -546,7 +595,7 @@ async def phone_login(request: PhoneLoginRequest, db: Session = Depends(get_db))
                 "avatar_url": user.avatar_url,
                 "phone": user.phone,
                 "kennel_name": user.kennel_name,
-                "subscription_tier": user.subscription_tier,
+                "subscription_tier": get_effective_tier(user),
             },
             "isNew": is_new,
         }

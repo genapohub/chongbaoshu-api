@@ -1,0 +1,48 @@
+/opt/chongbaoshu-api/logs/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 www-data www-data
+    sharedscripts
+
+    # 轮转后通知 uvicorn 重新打开日志文件
+    postrotate
+        [ -f /run/systemd/system ] && systemctl kill --signal=USR1 chongbaoshu-api.service 2>/dev/null || true
+    endscript
+
+    # 保留 error log 更长时间（90天）
+    # access log 保留 30 天（默认 rotate 30）
+}
+
+/opt/chongbaoshu-api/logs/error.log {
+    daily
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 www-data www-data
+    sharedscripts
+
+    postrotate
+        [ -f /run/systemd/system ] && systemctl kill --signal=USR1 chongbaoshu-api.service 2>/dev/null || true
+    endscript
+}
+
+/opt/chongbaoshu-api/logs/access.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 www-data www-data
+    sharedscripts
+
+    postrotate
+        [ -f /run/systemd/system ] && systemctl kill --signal=USR1 chongbaoshu-api.service 2>/dev/null || true
+    endscript
+}

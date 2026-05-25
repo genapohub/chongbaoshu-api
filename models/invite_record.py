@@ -7,7 +7,7 @@ class InviteRecord(Base):
     __tablename__ = "invite_records"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="邀请人ID")
+    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="邀请人ID")
     invitee_id = Column(Integer, ForeignKey("users.id"), nullable=True, comment="被邀请人ID")
     invite_code = Column(String(20), nullable=False, comment="邀请码")
     status = Column(String(20), default="pending", comment="状态: pending/redeemed/rewarded")

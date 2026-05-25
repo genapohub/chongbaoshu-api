@@ -113,6 +113,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Logs
+logs/
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -136,3 +139,11 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# SQLite 数据库文件（本地开发用，不提交）
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Alembic 临时表遗留（迁移异常中断时产生）
+# _alembic_tmp_* 表只存在于数据库内部，无文件可忽略

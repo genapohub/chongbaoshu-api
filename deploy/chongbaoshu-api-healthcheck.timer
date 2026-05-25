@@ -1,0 +1,13 @@
+[Unit]
+Description=ChongBaoShu API Health Check Timer
+Documentation=https://github.com/chongbaoshu/chongbaoshu-api
+
+[Timer]
+# 每 60 秒检查一次
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=10
+Persistent=true
+
+[Install]
+WantedBy=timers.target

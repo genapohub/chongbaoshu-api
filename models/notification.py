@@ -7,7 +7,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="用户ID")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="用户ID")
     type = Column(String(20), nullable=False, comment="通知类型")
     title = Column(String(100), nullable=False, comment="标题")
     content = Column(String(500), nullable=True, comment="内容")

@@ -5,6 +5,7 @@ from routes.auth import get_current_user, TokenData
 from config.database import get_db
 from sqlalchemy.orm import Session
 from models.feedback import Feedback
+from utils.sanitize import sanitize_string
 
 router = APIRouter()
 
@@ -24,8 +25,8 @@ async def create_feedback(
     
     feedback = Feedback(
         user_id=current_user.id,
-        content=request.content.strip(),
-        contact=request.contact.strip() if request.contact else None
+        content=sanitize_string(request.content.strip()),
+        contact=sanitize_string(request.contact.strip()) if request.contact else None
     )
     db.add(feedback)
     db.commit()

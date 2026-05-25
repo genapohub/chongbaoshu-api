@@ -8,6 +8,7 @@ from models.pet import Pet
 from models.pedigree_certificate import PedigreeCertificate
 from models.user import User
 from middleware.auth import get_current_user, TokenData
+from utils.helpers import get_effective_tier
 
 router = APIRouter(prefix="/api", tags=["certificates"])
 
@@ -22,7 +23,7 @@ class RevokeCertificateRequest(BaseModel):
     reason: str
 
 def generate_cert_no(db: Session) -> str:
-    year = datetime.now().year
+    year = datetime.utcnow().year
     count = db.query(PedigreeCertificate).filter(
         PedigreeCertificate.certificate_no.like(f"CBS-{year}-%")
     ).count()
@@ -90,7 +91,7 @@ async def create_certificate(
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
-    if user.subscription_tier != "pro":
+    if get_effective_tier(user) != "pro":
         raise HTTPException(status_code=403, detail="血统证书仅Pro用户可用")
     
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
@@ -131,7 +132,7 @@ async def issue_certificate(
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
-    if user.subscription_tier != "pro":
+    if get_effective_tier(user) != "pro":
         raise HTTPException(status_code=403, detail="血统证书仅Pro用户可用")
     
     certificate = db.query(PedigreeCertificate).filter(
@@ -146,7 +147,7 @@ async def issue_certificate(
         raise HTTPException(status_code=5005, detail="只有草稿状态的证书可以签发")
     
     certificate.status = "issued"
-    certificate.issue_date = datetime.now().date()
+    certificate.issue_date = datetime.utcnow().date()
     db.commit()
     
     return {
@@ -167,7 +168,7 @@ async def revoke_certificate(
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
-    if user.subscription_tier != "pro":
+    if get_effective_tier(user) != "pro":
         raise HTTPException(status_code=403, detail="血统证书仅Pro用户可用")
     
     certificate = db.query(PedigreeCertificate).filter(
@@ -186,7 +187,7 @@ async def revoke_certificate(
     
     certificate.status = "revoked"
     certificate.revoke_reason = request.reason
-    certificate.revoked_at = datetime.now()
+    certificate.revoked_at = datetime.utcnow()
     db.commit()
     
     return {

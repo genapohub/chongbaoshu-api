@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
+# [已废弃] 此脚本已被 Alembic 迁移管理接管。请使用 ./migrate.sh upgrade 执行迁移。
 """数据库迁移脚本：添加缺失的字段"""
 import sqlite3
 import os
-
 db_path = os.path.join(os.path.dirname(__file__), 'data', 'chongbaoshu.db')
 
 # 确保data目录存在

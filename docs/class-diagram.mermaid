@@ -1,0 +1,126 @@
+classDiagram
+    direction TB
+
+    class SecurityHeadersMiddleware {
+        +dispatch(request, call_next) Response
+    }
+
+    class BodyLimitMiddleware {
+        -MAX_BODY_SIZE: int = 10485760
+        +dispatch(request, call_next) Response
+    }
+
+    class SlowAPILimiter {
+        -limiter: Limiter
+        +key_func: get_remote_address
+        +default_limits: 60/minute
+    }
+
+    class GZipMiddleware {
+        -minimum_size: int = 1000
+    }
+
+    class AuthMiddleware {
+        -SECRET_KEY: str
+        -ALGORITHM: str = HS256
+        +verify_token(token) dict
+    }
+
+    class SanitizeUtils {
+        +sanitize_string(value: str) str
+        +sanitize_dict(data: dict, fields: list) dict
+    }
+
+    class PaginationUtils {
+        +get_pagination_params(page, page_size) dict
+        +paginate(query, page, page_size) PaginatedResult
+    }
+
+    class PaginatedResult {
+        +items: list
+        +total: int
+        +page: int
+        +page_size: int
+        +pages: int
+    }
+
+    class FileSignature {
+        -FILE_SIGNATURES: dict
+        +validate_file_magic(content: bytes, expected_mime: str) bool
+    }
+
+    class LogSanitizer {
+        +sanitize_log(text: str) str
+        -_mask_phone(text: str) str
+        -_mask_token(text: str) str
+    }
+
+    class Validators {
+        +validatePhone(phone: str) bool
+        +validateNickname(name: str) bool
+        +validateBreed(breed: str) bool
+        +validateLength(value, min, max) bool
+        +sanitizeInput(input: str) str
+    }
+
+    class APIWrapper {
+        -baseUrl: str
+        -maxRetries: int = 2
+        -timeout: int = 15000
+        +request(options, retryCount) Promise
+        -_handleUnauthorized() void
+    }
+
+    class DatabaseConfig {
+        -DATABASE_URL: str
+        +get_engine_args(database_url: str) dict
+        +engine: Engine
+        +SessionLocal: sessionmaker
+    }
+
+    SecurityHeadersMiddleware --|> BaseHTTPMiddleware
+    BodyLimitMiddleware --|> BaseHTTPMiddleware
+    GZipMiddleware --|> StarletteGZipMiddleware
+
+    PaginationUtils --> PaginatedResult : creates
+
+    class Routes {
+        <<module>>
+        auth_route
+        pets_route
+        breeding_route
+        health_route
+        subscription_route
+        invite_route
+        photos_route
+        certificates_route
+        export_route
+        notifications_route
+        feedback_route
+    }
+
+    Routes ..> SanitizeUtils : uses
+    Routes ..> PaginationUtils : uses
+    Routes ..> FileSignature : uses
+    Routes ..> AuthMiddleware : protected by
+
+    class Models {
+        <<module>>
+        User
+        Pet
+        BreedingRecord
+        HealthRecord
+        Subscription
+        SubscriptionOrder
+        Notification
+        InviteRecord
+        PetPhoto
+        PetTag
+        ExportTask
+        PedigreeCertificate
+        Feedback
+        VerificationCode
+    }
+
+    Models --> DatabaseConfig : stored in
+    Models ..> PaginationUtils : queried via

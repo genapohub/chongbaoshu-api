@@ -1,0 +1,21 @@
+[Unit]
+Description=ChongBaoShu API Health Check
+Documentation=https://github.com/chongbaoshu/chongbaoshu-api
+After=network-online.target chongbaoshu-api.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/chongbaoshu-api
+
+# 从 .env 加载告警 Webhook 地址
+EnvironmentFile=-/opt/chongbaoshu-api/.env
+
+ExecStart=/opt/chongbaoshu-api/deploy/health-check.sh
+
+# 单次运行最多 2 分钟（包含重试和重启等待）
+TimeoutStartSec=120
+
+# 标准输出追加到健康检查日志
+StandardOutput=append:/opt/chongbaoshu-api/logs/health-check.log
+StandardError=append:/opt/chongbaoshu-api/logs/health-check.log
