@@ -184,7 +184,7 @@ async def revoke_certificate(
         raise HTTPException(status_code=Errors.BUSINESS_ERROR, detail="只有已签发的证书可以撤销")
     
     if not request.reason:
-        raise HTTPException(status_code=1001, detail="撤销原因不能为空")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="撤销原因不能为空")
     
     certificate.status = "revoked"
     certificate.revoke_reason = request.reason

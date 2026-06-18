@@ -22,7 +22,7 @@ async def create_feedback(
     db: Session = Depends(get_db)
 ):
     if not request.content or len(request.content.strip()) < 10:
-        raise HTTPException(status_code=400, detail="反馈内容至少需要10个字符")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="反馈内容至少需要10个字符")
     
     feedback = Feedback(
         user_id=current_user.id,

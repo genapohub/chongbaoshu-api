@@ -49,11 +49,11 @@ async def create_export_task(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if get_effective_tier(user) != "pro":
-        raise HTTPException(status_code=403, detail="数据导出仅Pro用户可用")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="数据导出仅Pro用户可用")
     
     valid_types = ["pets", "breeding", "health", "all"]
     if request.type not in valid_types:
-        raise HTTPException(status_code=1001, detail=f"导出类型必须是: {'/'.join(valid_types)}")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail=f"导出类型必须是: {'/'.join(valid_types)}")
     
     task = ExportTask(
         user_id=current_user.id,

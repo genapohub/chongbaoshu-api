@@ -14,7 +14,7 @@ class User(Base):
     kennel_name = Column(String(100), nullable=True, comment="宠舍名称")
     kennel_address = Column(String(200), nullable=True, comment="宠舍地址")
     kennel_intro = Column(String, nullable=True, comment="宠舍简介")
-    subscription_tier = Column(String(20), default="free", comment="订阅等级")
+    subscription_tier = Column(String(20), default="free", comment="订阅等级（SSOT，Subscription 表为审计镜像）")
     subscription_expire = Column(DateTime, nullable=True, comment="订阅过期时间")
     remind_vaccine = Column(Boolean, default=True, comment="疫苗提醒开关")
     remind_deworm = Column(Boolean, default=True, comment="驱虫提醒开关")

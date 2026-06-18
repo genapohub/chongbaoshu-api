@@ -42,17 +42,6 @@ def is_valid_status_transition(current_status: str, target_status: str) -> bool:
     }
     return target_status in valid_transitions.get(current_status, [])
 
-def sync_user_to_subscription(user, db) -> None:
-    """确保 Subscription 审计表与 User 订阅字段一致（User 为 SSOT）"""
-    sub = db.query(Subscription).filter(Subscription.user_id == user.id).first()
-    if not sub:
-        sub = Subscription(user_id=user.id)
-        db.add(sub)
-    sub.tier = user.subscription_tier
-    sub.status = "active" if user.subscription_tier != "free" else "cancelled"
-    sub.expires_at = user.subscription_expire
-    db.flush()
-
 FREE_LIMITS = {
     "maxPets": 3,
     "maxPhotosPerPet": 3,
@@ -68,7 +57,7 @@ SUBSCRIPTION_PLANS = {
 def get_user_limits(tier: str) -> dict:
     return SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
 
-def get_effective_tier(user, token_data=None) -> str:
+def get_effective_tier(user) -> str:
     """返回用户当前有效的订阅等级。到期自动返回 'free'。
 
     User.subscription_tier 为唯一真实来源（Single Source of Truth）。
@@ -80,11 +69,6 @@ def get_effective_tier(user, token_data=None) -> str:
         return "free"
     return user.subscription_tier
 
-
-def get_effective_tier_cached(token_data) -> str:
-    """从 TokenData 获取缓存的订阅等级（快速路径，无需 DB 查询）"""
-    tier = getattr(token_data, "subscription_tier", None)
-    return tier if tier and tier != "free" else "free"
 
 def format_datetime(dt) -> Optional[str]:
     """格式化 datetime/date 为字符串，统一工具函数"""

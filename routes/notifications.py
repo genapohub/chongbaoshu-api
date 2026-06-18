@@ -57,7 +57,7 @@ async def mark_notification_read(
         Notification.user_id == current_user.id
     ).first()
     if not notification:
-        raise HTTPException(status_code=404, detail="通知不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="通知不存在")
 
     notification.is_read = True
     db.commit()

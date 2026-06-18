@@ -151,7 +151,7 @@ async def wx_login(request: Request, req: WxLoginRequest, db: Session = Depends(
         print(f"[ERROR] 登录失败: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=Errors.SERVER_ERROR, detail=str(e))
 
 @router.get("/profile")
 async def get_profile(

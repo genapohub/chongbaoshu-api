@@ -29,7 +29,7 @@ async def get_my_invite_code(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="用户不存在")
     
     if not user.invite_code:
         user.invite_code = generate_invite_code(db)
@@ -52,24 +52,24 @@ async def redeem_invite_code(
     sentry_sdk.set_tag("flow", "invite")
 
     if not request.code:
-        raise HTTPException(status_code=400, detail="邀请码不能为空")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="邀请码不能为空")
     
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="用户不存在")
     
     inviter = db.query(User).filter(User.invite_code == request.code.upper()).first()
     if not inviter:
-        raise HTTPException(status_code=404, detail="邀请码不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="邀请码不存在")
     
     if inviter.id == user.id:
-        raise HTTPException(status_code=400, detail="不能兑换自己的邀请码")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="不能兑换自己的邀请码")
     
     from models.invite_record import InviteRecord
     
     existing = db.query(InviteRecord).filter(InviteRecord.invitee_id == user.id).first()
     if existing:
-        raise HTTPException(status_code=400, detail="已被邀请过，不能重复兑换")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="已被邀请过，不能重复兑换")
     
     from datetime import datetime, timedelta
     # 使用本地时间避免时区问题
