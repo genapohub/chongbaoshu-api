@@ -7,6 +7,7 @@ from config.database import get_db
 from models.user import User
 from models.pet import Pet
 from models.export_task import ExportTask
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import get_effective_tier
 

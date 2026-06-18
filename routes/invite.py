@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from config.database import get_db
 from models.user import User
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import format_datetime
 

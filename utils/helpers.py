@@ -48,17 +48,21 @@ FREE_LIMITS = {
 }
 
 SUBSCRIPTION_PLANS = {
-    "free": dict(list(FREE_LIMITS.items()) + [("price", 0), ("yearly_price", 0), ("name", "免费版")]),
-    "basic": {"maxPets": 100, "maxPhotosPerPet": 20, "maxBreedingRecords": 50, "price": 49, "yearly_price": 39, "name": "基础版"},
-    "pro": {"maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreedingRecords": "unlimited", "price": 149, "yearly_price": 119, "name": "专业版"},
+    "free": dict(list(FREE_LIMITS.items()) + [("price", 0), ("name", "免费版")]),
+    "basic": {"maxPets": 100, "maxPhotosPerPet": 20, "maxBreedingRecords": 50, "price": 49, "name": "基础版"},
+    "pro": {"maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreedingRecords": "unlimited", "price": 149, "name": "专业版"},
 }
 
 def get_user_limits(tier: str) -> dict:
     return SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["free"])
 
 def get_effective_tier(user) -> str:
-    """返回用户当前有效的订阅等级。到期自动返回 'free'。"""
-    if user.subscription_tier == "free":
+    """返回用户当前有效的订阅等级。到期自动返回 'free'。
+
+    User.subscription_tier 为唯一真实来源（Single Source of Truth）。
+    Subscription 表仅作为审计记录镜像。
+    """
+    if not user or user.subscription_tier == "free":
         return "free"
     if user.subscription_expire and user.subscription_expire < datetime.utcnow():
         return "free"

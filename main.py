@@ -18,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from config.database import Base, engine
 from config.logging_config import setup_logging, get_access_logger, get_error_logger
 from config.health import health_check_deep
+from config.error_codes import Errors
 from middleware.audit import audit_middleware
 from middleware.monitoring import MonitoringMiddleware
 from utils.sanitize import mask_phone
@@ -88,7 +89,7 @@ async def limit_request_body(request, call_next):
     if request.method in ("POST", "PUT", "PATCH"):
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > 10 * 1024 * 1024:
-            return JSONResponse(status_code=413, content={"code": 1001, "message": "请求体过大，最大10MB"})
+            return JSONResponse(status_code=413, content={"code": Errors.PARAM_INVALID, "message": "请求体过大，最大10MB"})
     return await call_next(request)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -106,11 +107,11 @@ async def health_check_full():
     """深度健康检查：数据库、磁盘、内存"""
     try:
         result = await health_check_deep()
-        code = 0 if result["status"] == "ok" else 5001
+        code = Errors.SUCCESS if result["status"] == "ok" else Errors.DEEP_CHECK_FAILED
         return {"code": code, "data": result}
     except Exception as e:
         error_logger.error(f"[HealthCheck] 深度检查异常: {e}")
-        return {"code": 5001, "data": {"status": "error", "message": str(e)}}
+        return {"code": Errors.DEEP_CHECK_FAILED, "data": {"status": "error", "message": str(e)}}
 
 app.include_router(auth_router)
 app.include_router(pets_router)
@@ -127,7 +128,7 @@ app.include_router(monitoring_router)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
-    custom_code = exc.status_code
+    custom_code = exc.status_code  # 业务错误码，映射逻辑保留
     if custom_code == 1001:
         http_status = 400
     elif custom_code == 1002:
@@ -156,7 +157,7 @@ from fastapi.exceptions import RequestValidationError
 async def validation_exception_handler(request, exc):
     return JSONResponse(
         status_code=400,
-        content={"code": 1001, "message": "参数验证失败"}
+        content={"code": Errors.PARAM_INVALID, "message": "参数验证失败"}
     )
 
 async def subscription_expiry_sweeper():

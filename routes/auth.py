@@ -13,6 +13,7 @@ from models.breeding_record import BreedingRecord
 from models.health_record import HealthRecord
 from models.subscription import Subscription
 from models.verification_code import VerificationCode
+from config.error_codes import Errors
 from middleware.auth import create_access_token, get_current_user, TokenData
 from utils.helpers import get_user_limits, format_datetime, get_effective_tier
 from utils.sanitize import sanitize_string
@@ -95,7 +96,7 @@ async def wx_login(request: Request, req: WxLoginRequest, db: Session = Depends(
     sentry_sdk.set_tag("login_method", "wx")
 
     if not req.code:
-        raise HTTPException(status_code=1001, detail="缺少微信登录code")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="缺少微信登录code")
 
     try:
         if DEV_MODE:
@@ -116,10 +117,12 @@ async def wx_login(request: Request, req: WxLoginRequest, db: Session = Depends(
             unionid = result.get("unionid")
             user, is_new = get_or_create_user(db, openid, unionid)
         
+        # get_effective_tier 在登录时计算一次放入 token，后续请求直接读 TokenData.subscription_tier
+        effective_tier = get_effective_tier(user)
         access_token = create_access_token({
             "id": user.id,
             "openid": user.openid,
-            "subscription_tier": get_effective_tier(user),
+            "subscription_tier": effective_tier,
         })
         
         # Sentry：设置用户上下文和订阅等级标签
@@ -157,7 +160,7 @@ async def get_profile(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="用户不存在")
     
     return {
         "code": 0,
@@ -213,7 +216,7 @@ async def update_profile(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="用户不存在")
     
     if nickname is not None:
         user.nickname = sanitize_string(nickname)
@@ -255,7 +258,7 @@ async def update_profile(
         
         content = await kennel_logo.read()
         if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=1001, detail="犬舍Logo文件大小超过限制（最大5MB）")
+            raise HTTPException(status_code=Errors.PARAM_INVALID, detail="犬舍Logo文件大小超过限制（最大5MB）")
         
         import os
         from uuid import uuid4
@@ -433,7 +436,7 @@ async def get_limits(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
     
     limits = get_user_limits(get_effective_tier(user))
     
@@ -467,7 +470,7 @@ async def send_verification_code(
     request: Request, req: SendCodeRequest, db: Session = Depends(get_db)
 ):
     if not req.phone or len(req.phone) != 11:
-        raise HTTPException(status_code=1001, detail="请输入正确的手机号")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="请输入正确的手机号")
 
     if DEV_MODE:
         code = "123456"  # 开发环境固定验证码
@@ -501,7 +504,7 @@ async def phone_login(request: Request, req: PhoneLoginRequest, db: Session = De
     sentry_sdk.set_tag("login_method", "phone")
 
     if not req.phone or not req.code:
-        raise HTTPException(status_code=1001, detail="请输入手机号和验证码")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="请输入手机号和验证码")
 
     # 暴力破解防护：检查最近5分钟内失败次数
     from datetime import timedelta as _td
@@ -512,7 +515,7 @@ async def phone_login(request: Request, req: PhoneLoginRequest, db: Session = De
         VerificationCode.created_at >= five_min_ago,
     ).count()
     if failed_count >= 5:
-        raise HTTPException(status_code=1001, detail="验证码错误次数过多，请5分钟后重试")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="验证码错误次数过多，请5分钟后重试")
 
     # 开发模式：支持默认验证码123456直接登录（无需先发送验证码）
     if DEV_MODE and req.code == "123456":
@@ -524,10 +527,12 @@ async def phone_login(request: Request, req: PhoneLoginRequest, db: Session = De
             db.commit()
             db.refresh(user)
         
+        # get_effective_tier 在登录时计算一次放入 token，后续请求直接读 TokenData.subscription_tier
+        effective_tier = get_effective_tier(user)
         access_token = create_access_token({
             "id": user.id,
             "openid": user.openid,
-            "subscription_tier": get_effective_tier(user),
+            "subscription_tier": effective_tier,
         })
         
         # Sentry：设置用户上下文和订阅等级标签
@@ -559,10 +564,10 @@ async def phone_login(request: Request, req: PhoneLoginRequest, db: Session = De
     ).order_by(VerificationCode.created_at.desc()).first()
 
     if not verification:
-        raise HTTPException(status_code=1001, detail="验证码错误或已失效")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="验证码错误或已失效")
 
     if (datetime.utcnow() - verification.created_at).total_seconds() > 300:
-        raise HTTPException(status_code=1001, detail="验证码已过期")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="验证码已过期")
 
     verification.is_used = True
     db.commit()

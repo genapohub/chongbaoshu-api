@@ -6,8 +6,10 @@ from datetime import datetime, timedelta
 from config.database import get_db
 from models.health_record import HealthRecord
 from models.pet import Pet
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import calculate_next_date
+from utils.sanitize import sanitize_string
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -134,7 +136,7 @@ async def get_health_record(
         HealthRecord.is_deleted == False
     ).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="健康记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="健康记录不存在")
 
     pet = db.query(Pet).filter(Pet.id == record.pet_id).first()
 
@@ -168,7 +170,7 @@ async def add_health_record(
 ):
     pet = db.query(Pet).filter(Pet.id == request.pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=1001, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="宠物不存在")
     
     record_date_obj = datetime.strptime(request.record_date, "%Y-%m-%d").date()
     next_date = calculate_next_date(request.type, request.record_date, request.vaccine_type, request.deworm_type)
@@ -178,16 +180,16 @@ async def add_health_record(
         pet_id=request.pet_id,
         owner_id=current_user.id,
         type=request.type,
-        vaccine_type=request.vaccine_type,
+        vaccine_type=sanitize_string(request.vaccine_type) if request.vaccine_type else None,
         deworm_type=request.deworm_type,
-        medicine_name=request.medicine_name,
-        dosage=request.dosage,
-        batch_no=request.batch_no,
+        medicine_name=sanitize_string(request.medicine_name) if request.medicine_name else None,
+        dosage=sanitize_string(request.dosage) if request.dosage else None,
+        batch_no=sanitize_string(request.batch_no) if request.batch_no else None,
         vaccine_round=request.vaccine_round,
-        vet_hospital=request.vet_hospital,
+        vet_hospital=sanitize_string(request.vet_hospital) if request.vet_hospital else None,
         record_date=record_date_obj,
         next_date=next_date_obj,
-        notes=request.notes,
+        notes=sanitize_string(request.notes) if request.notes else None,
     )
     db.add(health)
     db.commit()
@@ -214,7 +216,7 @@ async def update_health_record(
 ):
     record = db.query(HealthRecord).filter(HealthRecord.id == record_id, HealthRecord.owner_id == current_user.id, HealthRecord.is_deleted == False).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="健康记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="健康记录不存在")
     
     if request.type is not None:
         record.type = request.type
@@ -239,7 +241,7 @@ async def update_health_record(
     if request.next_date is not None:
         record.next_date = datetime.strptime(request.next_date, "%Y-%m-%d").date()
     if request.notes is not None:
-        record.notes = request.notes
+        record.notes = sanitize_string(request.notes) if request.notes else None
     
     db.commit()
     db.refresh(record)
@@ -263,7 +265,7 @@ async def delete_health_record(
 ):
     record = db.query(HealthRecord).filter(HealthRecord.id == record_id, HealthRecord.owner_id == current_user.id, HealthRecord.is_deleted == False).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="健康记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="健康记录不存在")
     
     record.is_deleted = True
     db.commit()

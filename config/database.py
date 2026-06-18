@@ -1,22 +1,27 @@
-import os
+"""
+数据库连接与 Session 管理
+
+通过 config/env.py 自动选择数据库：
+- 开发环境 → SQLite
+- 生产环境 → MySQL
+"""
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-env = os.getenv("ENV", "development")
+from config.env import get_db_url, is_production
 
-if os.getenv("DB_DIALECT") == "mysql":
-    DB_URL = f"mysql+pymysql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', 3306)}/{os.getenv('DB_NAME')}"
-else:
-    DB_URL = f"sqlite:///{os.getenv('DB_STORAGE', './database.sqlite')}"
+DB_URL = get_db_url()
 
-if os.getenv("DB_DIALECT") == "mysql":
+if is_production():
     engine = create_engine(
         DB_URL,
         pool_size=10,
         max_overflow=20,
         pool_recycle=3600,
         pool_pre_ping=True,
+        echo=False,
     )
 else:
     engine = create_engine(
@@ -24,6 +29,7 @@ else:
         connect_args={"check_same_thread": False},
         pool_size=5,
         pool_pre_ping=True,
+        echo=False,
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -7,6 +7,7 @@ from config.database import get_db
 from models.pet import Pet
 from models.pedigree_certificate import PedigreeCertificate
 from models.user import User
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import get_effective_tier
 
@@ -25,7 +26,7 @@ class RevokeCertificateRequest(BaseModel):
 def generate_cert_no(db: Session) -> str:
     year = datetime.utcnow().year
     count = db.query(PedigreeCertificate).filter(
-        PedigreeCertificate.certificate_no.like(f"CBS-{year}-%")
+        PedigreeCertificate.cert_no.like(f"CBS-{year}-%")
     ).count()
     return f"CBS-{year}-{str(count + 1).zfill(5)}"
 
@@ -58,7 +59,7 @@ async def get_pet_certificates(
 ):
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     certificates = db.query(PedigreeCertificate).filter(
         PedigreeCertificate.pet_id == pet_id,
@@ -70,7 +71,7 @@ async def get_pet_certificates(
         result.append({
             "id": cert.id,
             "pet_id": cert.pet_id,
-            "certificate_no": cert.certificate_no,
+            "certificate_no": cert.cert_no,
             "status": cert.status,
             "generation": cert.generation,
             "issue_date": cert.issue_date,
@@ -92,11 +93,11 @@ async def create_certificate(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if get_effective_tier(user) != "pro":
-        raise HTTPException(status_code=403, detail="血统证书仅Pro用户可用")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="血统证书仅Pro用户可用")
     
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     cert_no = generate_cert_no(db)
     pedigree_tree = build_pedigree_tree(db, pet, request.generation or 3)
@@ -104,7 +105,7 @@ async def create_certificate(
     certificate = PedigreeCertificate(
         pet_id=pet_id,
         owner_id=current_user.id,
-        certificate_no=cert_no,
+        cert_no=cert_no,
         generation=request.generation or 3,
         pedigree_tree=pedigree_tree,
         status="draft",
@@ -118,7 +119,7 @@ async def create_certificate(
         "message": "证书创建成功",
         "data": {
             "id": certificate.id,
-            "certificate_no": certificate.certificate_no,
+            "certificate_no": certificate.cert_no,
             "status": certificate.status,
             "generation": certificate.generation,
             "pedigree_tree": pedigree_tree,
@@ -133,7 +134,7 @@ async def issue_certificate(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if get_effective_tier(user) != "pro":
-        raise HTTPException(status_code=403, detail="血统证书仅Pro用户可用")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="血统证书仅Pro用户可用")
     
     certificate = db.query(PedigreeCertificate).filter(
         PedigreeCertificate.id == cert_id,
@@ -141,10 +142,10 @@ async def issue_certificate(
     ).first()
     
     if not certificate:
-        raise HTTPException(status_code=404, detail="证书不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="证书不存在")
     
     if certificate.status != "draft":
-        raise HTTPException(status_code=5005, detail="只有草稿状态的证书可以签发")
+        raise HTTPException(status_code=Errors.BUSINESS_ERROR, detail="只有草稿状态的证书可以签发")
     
     certificate.status = "issued"
     certificate.issue_date = datetime.utcnow().date()
@@ -169,7 +170,7 @@ async def revoke_certificate(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if get_effective_tier(user) != "pro":
-        raise HTTPException(status_code=403, detail="血统证书仅Pro用户可用")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="血统证书仅Pro用户可用")
     
     certificate = db.query(PedigreeCertificate).filter(
         PedigreeCertificate.id == cert_id,
@@ -177,10 +178,10 @@ async def revoke_certificate(
     ).first()
     
     if not certificate:
-        raise HTTPException(status_code=404, detail="证书不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="证书不存在")
     
     if certificate.status != "issued":
-        raise HTTPException(status_code=5005, detail="只有已签发的证书可以撤销")
+        raise HTTPException(status_code=Errors.BUSINESS_ERROR, detail="只有已签发的证书可以撤销")
     
     if not request.reason:
         raise HTTPException(status_code=1001, detail="撤销原因不能为空")

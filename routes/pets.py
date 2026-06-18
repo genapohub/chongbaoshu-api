@@ -12,6 +12,7 @@ from models.user import User
 from models.pet import Pet
 from models.pet_photo import PetPhoto
 from models.pet_tag import PetTag
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import get_user_limits, get_effective_tier
 from utils.sanitize import sanitize_string
@@ -148,7 +149,7 @@ async def create_pet(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
     
     limits = get_user_limits(get_effective_tier(user))
     
@@ -158,7 +159,7 @@ async def create_pet(
     ).count()
     
     if limits["maxPets"] != "unlimited" and current_pets >= limits["maxPets"]:
-        raise HTTPException(status_code=2001, detail="已达宠物数量上限，请升级订阅")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="已达宠物数量上限，请升级订阅")
     
     chip_number = chip_number or chip_no
     
@@ -198,7 +199,7 @@ async def create_pet(
         
         content = await avatar.read()
         if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=1001, detail="头像文件大小超过限制（最大5MB）")
+            raise HTTPException(status_code=Errors.PARAM_INVALID, detail="头像文件大小超过限制（最大5MB）")
         
         import os
         from uuid import uuid4
@@ -241,7 +242,7 @@ async def get_pet(
 ):
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     all_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).order_by(PetPhoto.sort_order).all()
     tags = db.query(PetTag).filter(PetTag.pet_id == pet.id).all()
@@ -311,7 +312,7 @@ async def update_pet(
 ):
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     if request.name is not None:
         pet.name = sanitize_string(request.name)
@@ -364,7 +365,7 @@ async def delete_pet(
 ):
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     pet.is_deleted = True
     db.commit()
@@ -383,14 +384,14 @@ async def assign_cert_no(
     """为宠物分配平台认证编号，格式：CBS-P-{year}-{seq:05d}"""
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
 
     if get_effective_tier(user) != "pro":
-        raise HTTPException(status_code=2001, detail="仅 Pro 用户可分配平台认证编号")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="仅 Pro 用户可分配平台认证编号")
 
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
 
     # 幂等：若已有认证编号，直接返回
     if pet.platform_cert_no:
@@ -440,7 +441,7 @@ async def get_pedigree(
     
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id, Pet.is_deleted == False).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     # 获取父母信息
     father = None

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from config.database import get_db
 from models.notification import Notification
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])

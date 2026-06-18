@@ -8,27 +8,10 @@ from config.database import get_db
 from models.breeding_record import BreedingRecord
 from models.pet import Pet
 from middleware.auth import get_current_user, TokenData
-from utils.helpers import format_datetime
+from utils.helpers import format_datetime, calculate_due_date, is_valid_status_transition
+from utils.sanitize import sanitize_string
 
 router = APIRouter(prefix="/api/breeding", tags=["breeding"])
-
-
-def calculate_due_date(species: str, mating_date: str) -> str:
-    """根据物种和配种日期计算预产期"""
-    try:
-        m_date = datetime.strptime(mating_date, "%Y-%m-%d").date()
-    except:
-        return None
-
-    gestation_days = {
-        "dog": 63,
-        "cat": 65,
-        "rabbit": 30,
-        "bird": 21,
-    }
-    days = gestation_days.get(species, 63)
-    due = m_date + timedelta(days=days)
-    return due.strftime("%Y-%m-%d")
 
 
 class AddBreedingRequest(BaseModel):
@@ -75,10 +58,24 @@ async def get_breeding_records(
     total = query.count()
     records = query.order_by(BreedingRecord.mate_date.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
+    # Batch preload parents to avoid N+1 queries
+    parent_ids = set()
+    for record in records:
+        if record.mother_id:
+            parent_ids.add(record.mother_id)
+        if record.father_id:
+            parent_ids.add(record.father_id)
+
+    parents_map = {}
+    if parent_ids:
+        parent_records = db.query(Pet).filter(Pet.id.in_(parent_ids)).all()
+        for p in parent_records:
+            parents_map[p.id] = p
+
     result = []
     for record in records:
-        mother = db.query(Pet).filter(Pet.id == record.mother_id).first()
-        father = db.query(Pet).filter(Pet.id == record.father_id).first() if record.father_id else None
+        mother = parents_map.get(record.mother_id)
+        father = parents_map.get(record.father_id) if record.father_id else None
         result.append({
             "id": record.id,
             "pet_id": record.mother_id,
@@ -117,7 +114,7 @@ async def add_breeding_record(
     pet_id = request.pet_id if request.pet_id is not None else request.mother_pet_id
     
     if pet_id is None:
-        raise HTTPException(status_code=1001, detail="缺少宠物ID")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="缺少宠物ID")
     
     pet = db.query(Pet).filter(
         Pet.id == pet_id,
@@ -125,7 +122,7 @@ async def add_breeding_record(
         Pet.is_deleted == False
     ).first()
     if not pet:
-        raise HTTPException(status_code=1001, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="宠物不存在")
 
     due_date = request.due_date or calculate_due_date(pet.species, request.mating_date)
 
@@ -133,12 +130,12 @@ async def add_breeding_record(
         owner_id=current_user.id,
         mother_id=pet_id,
         father_id=request.father_id,
-        mate_name=request.mate_name,
+        mate_name=sanitize_string(request.mate_name) if request.mate_name else None,
         mate_date=datetime.strptime(request.mating_date, "%Y-%m-%d").date(),
         due_date=datetime.strptime(due_date, "%Y-%m-%d").date() if due_date else None,
         mating_method=request.mating_method or "natural",
         fee=request.fee,
-        notes=request.notes,
+        notes=sanitize_string(request.notes) if request.notes else None,
         status="mated",
     )
     db.add(breeding)
@@ -169,7 +166,7 @@ async def get_breeding_record(
         BreedingRecord.is_deleted == False
     ).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="繁育记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="繁育记录不存在")
 
     mother = db.query(Pet).filter(Pet.id == record.mother_id).first()
 
@@ -207,10 +204,10 @@ async def update_breeding_record(
         BreedingRecord.is_deleted == False
     ).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="繁育记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="繁育记录不存在")
 
     if request.mate_name is not None:
-        record.mate_name = request.mate_name
+        record.mate_name = sanitize_string(request.mate_name) if request.mate_name else None
     if request.mating_date is not None:
         record.mate_date = datetime.strptime(request.mating_date, "%Y-%m-%d").date()
         if request.due_date is None:
@@ -226,7 +223,7 @@ async def update_breeding_record(
     if request.status is not None:
         record.status = request.status
     if request.notes is not None:
-        record.notes = request.notes
+        record.notes = sanitize_string(request.notes) if request.notes else None
 
     db.commit()
     db.refresh(record)
@@ -254,7 +251,11 @@ async def update_breeding_status(
         BreedingRecord.is_deleted == False
     ).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="繁育记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="繁育记录不存在")
+
+    # Validate status transition
+    if not is_valid_status_transition(record.status, status):
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail=f"无效的状态变更：{record.status} → {status}")
 
     record.status = status
     db.commit()
@@ -281,7 +282,7 @@ async def delete_breeding_record(
         BreedingRecord.is_deleted == False
     ).first()
     if not record:
-        raise HTTPException(status_code=1001, detail="繁育记录不存在")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="繁育记录不存在")
 
     record.is_deleted = True
     db.commit()
@@ -309,7 +310,7 @@ async def check_inbreeding(
         Pet.is_deleted == False
     ).first()
     if not mother:
-        raise HTTPException(status_code=404, detail="母宠不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="母宠不存在")
 
     father = db.query(Pet).filter(
         Pet.id == request.father_pet_id,
@@ -317,7 +318,7 @@ async def check_inbreeding(
         Pet.is_deleted == False
     ).first()
     if not father:
-        raise HTTPException(status_code=404, detail="父宠不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="父宠不存在")
 
     def get_pedigree(pet):
         """获取宠物的祖先信息"""

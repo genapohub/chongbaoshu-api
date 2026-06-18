@@ -7,6 +7,7 @@ from config.database import get_db
 from models.pet import Pet
 from models.pet_photo import PetPhoto
 from models.user import User
+from config.error_codes import Errors
 from middleware.auth import get_current_user, TokenData
 from middleware.upload import delete_local_file, validate_file, save_file
 
@@ -21,7 +22,7 @@ async def upload_photo(
 ):
     pet = db.query(Pet).filter(Pet.id == pet_id, Pet.owner_id == current_user.id).first()
     if not pet:
-        raise HTTPException(status_code=404, detail="宠物不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="宠物不存在")
     
     validate_file(file)
     
@@ -63,11 +64,11 @@ async def delete_photo(
 ):
     photo = db.query(PetPhoto).filter(PetPhoto.id == photo_id).first()
     if not photo:
-        raise HTTPException(status_code=404, detail="照片不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="照片不存在")
     
     pet = db.query(Pet).filter(Pet.id == photo.pet_id, Pet.owner_id == current_user.id).first()
     if not pet:
-        raise HTTPException(status_code=403, detail="无权限删除此照片")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="无权限删除此照片")
     
     delete_local_file(photo.photo_url)
     db.delete(photo)
@@ -88,11 +89,11 @@ async def set_cover_photo(
 ):
     photo = db.query(PetPhoto).filter(PetPhoto.id == photo_id).first()
     if not photo:
-        raise HTTPException(status_code=404, detail="照片不存在")
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="照片不存在")
     
     pet = db.query(Pet).filter(Pet.id == photo.pet_id, Pet.owner_id == current_user.id).first()
     if not pet:
-        raise HTTPException(status_code=403, detail="无权限操作此照片")
+        raise HTTPException(status_code=Errors.PERMISSION_DENIED, detail="无权限操作此照片")
     
     pet.avatar_photo_id = photo.id
     

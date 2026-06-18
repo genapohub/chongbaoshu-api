@@ -1,0 +1,75 @@
+# ============================================================
+#  宠宝树 — Gitee 自动部署流水线
+#
+#  触发条件：push 到 master 分支时自动触发
+#  流程：拉取代码 → 安装依赖 → 运行测试 → SSH 部署到生产服务器
+#
+#  配置前准备：
+#   1. 在 Gitee 仓库 → 设置 → 流水线变量 中添加：
+#      - SSH_HOST: 生产服务器 IP
+#      - SSH_USER: 服务器用户名（如 root）
+#      - SSH_KEY:  服务器 SSH 私钥（Base64 编码）
+#   2. 确保服务器已执行 deploy/setup_production.sh 完成初始化
+# ============================================================
+
+name: 宠宝树-自动部署
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: 运行测试
+        run: |
+          cp .env.example .env
+          python -m pytest tests/ -x --tb=short
+        continue-on-error: false
+
+      - name: 部署到生产服务器
+        if: success()
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+          ssh $SSH_USER@$SSH_HOST << 'DEPLOY_SCRIPT'
+            set -e
+            cd /opt/chongbaoshu-api
+
+            echo ">>> 拉取最新代码..."
+            git pull origin master
+
+            echo ">>> 安装/更新依赖..."
+            source .venv/bin/activate
+            pip install -r requirements.txt -q
+
+            echo ">>> 执行数据库迁移..."
+            python -m alembic upgrade head
+
+            echo ">>> 重启服务..."
+            sudo systemctl restart chongbaoshu-api
+            sleep 3
+
+            echo ">>> 健康检查..."
+            curl -sf http://localhost:3000/api/health-check && echo " OK" || echo " FAILED"
+
+            echo ">>> 部署完成"
+DEPLOY_SCRIPT

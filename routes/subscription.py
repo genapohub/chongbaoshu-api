@@ -65,7 +65,7 @@ async def get_current_subscription(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
 
     # 实时过期检查：确保当前用户看到的永远是真实等级
     effective_tier = get_effective_tier(user)
@@ -99,7 +99,7 @@ async def get_usage(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
     
     pet_count = db.query(Pet).filter(Pet.owner_id == current_user.id, Pet.is_deleted == False).count()
     breeding_count = db.query(BreedingRecord).filter(BreedingRecord.owner_id == current_user.id, BreedingRecord.is_deleted == False).count()
@@ -121,9 +121,9 @@ async def get_plans():
         "code": 0,
         "data": {
             "plans": [
-                {"tier": "free", "name": "免费版", "price": 0, "yearlyPrice": 0, "maxPets": 3, "maxPhotosPerPet": 3, "maxBreeding": 3},
-                {"tier": "basic", "name": "基础版", "price": 49, "yearlyPrice": 39, "maxPets": 100, "maxPhotosPerPet": 20, "maxBreeding": 50},
-                {"tier": "pro", "name": "专业版", "price": 149, "yearlyPrice": 119, "maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreeding": "unlimited"},
+                {"tier": "free", "name": "免费版", "price": 0, "maxPets": 3, "maxPhotosPerPet": 3, "maxBreeding": 3},
+                {"tier": "basic", "name": "基础版", "price": 49, "maxPets": 100, "maxPhotosPerPet": 20, "maxBreeding": 50},
+                {"tier": "pro", "name": "专业版", "price": 149, "maxPets": "unlimited", "maxPhotosPerPet": "unlimited", "maxBreeding": "unlimited"},
             ]
         }
     }
@@ -133,11 +133,7 @@ async def get_plans():
 
 class UpgradeRequest(BaseModel):
     tier: str
-    cycle: Optional[str] = "monthly"  # 订阅周期: monthly/yearly
     order_id: Optional[int] = None  # 已支付的订单ID，生产环境必传
-
-# 订阅周期对应的天数
-CYCLE_DAYS = {"monthly": 30, "yearly": 365}
 
 @router.post("/upgrade")
 async def upgrade_subscription(
@@ -151,58 +147,48 @@ async def upgrade_subscription(
 
     valid_tiers = ["free", "basic", "pro"]
     if request.tier not in valid_tiers:
-        raise HTTPException(status_code=1001, detail="无效的订阅等级")
-
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="无效的订阅等级")
+    
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
-
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
+    
     # 支付验证：必须提供已支付订单
     if request.tier != "free":
         if not request.order_id:
-            raise HTTPException(status_code=1001, detail="升级订阅需提供有效订单ID，请先通过 /create 下单并完成支付")
-
+            raise HTTPException(status_code=Errors.PARAM_INVALID, detail="升级订阅需提供有效订单ID，请先通过 /create 下单并完成支付")
+        
         order = db.query(SubscriptionOrder).filter(
             SubscriptionOrder.id == request.order_id,
             SubscriptionOrder.user_id == user.id,
         ).first()
         if not order:
-            raise HTTPException(status_code=1001, detail="订单不存在")
+            raise HTTPException(status_code=Errors.PARAM_INVALID, detail="订单不存在")
         if order.status != "paid":
-            raise HTTPException(status_code=1001, detail="订单尚未支付完成，无法升级")
+            raise HTTPException(status_code=Errors.PARAM_INVALID, detail="订单尚未支付完成，无法升级")
         if order.tier != request.tier:
-            raise HTTPException(status_code=1001, detail="订单等级与请求升级等级不一致")
-
-    # 根据订单的 cycle 确定过期天数（优先用订单记录的 cycle）
-    cycle = "monthly"
-    if request.tier != "free" and request.order_id:
-        order_cycle = db.query(SubscriptionOrder).filter(SubscriptionOrder.id == request.order_id).first()
-        if order_cycle and order_cycle.cycle:
-            cycle = order_cycle.cycle
-    elif request.cycle:
-        cycle = request.cycle
-    expire_days = CYCLE_DAYS.get(cycle, 30)
-
+            raise HTTPException(status_code=Errors.PARAM_INVALID, detail="订单等级与请求升级等级不一致")
+    
     user.subscription_tier = request.tier
     if request.tier != "free":
         user.subscription_source = "paid"
-        user.subscription_expire = datetime.utcnow() + timedelta(days=expire_days)
+        user.subscription_expire = datetime.utcnow() + timedelta(days=30)
     else:
         user.subscription_source = None
         user.subscription_expire = None
-
+    
     subscription = db.query(Subscription).filter(Subscription.user_id == user.id).first()
     if subscription:
         subscription.tier = request.tier
         if request.tier != "free":
             subscription.status = "active"
-            subscription.expires_at = datetime.utcnow() + timedelta(days=expire_days)
+            subscription.expires_at = datetime.utcnow() + timedelta(days=30)
         else:
             subscription.status = "cancelled"
             subscription.expires_at = None
-
+    
     db.commit()
-
+    
     return {
         "code": 0,
         "message": "订阅升级成功",
@@ -227,39 +213,30 @@ async def create_order(
 
     valid_tiers = ["basic", "pro"]
     if request.tier not in valid_tiers:
-        raise HTTPException(status_code=1001, detail="无效的订阅等级")
-
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="无效的订阅等级")
+    
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
-
-    # 月付/年付定价（年付为每月单价，总价 = 年付单价 × 12）
-    prices = {
-        "basic": {"monthly": 49, "yearly": 39},
-        "pro": {"monthly": 149, "yearly": 119},
-    }
-    cycle = request.cycle or "monthly"
-    price_per_month = prices.get(request.tier, {}).get(cycle, 0)
-    # 月付总价 = 单月价，年付总价 = 年付月价 × 12
-    total_price = price_per_month if cycle == "monthly" else price_per_month * 12
-
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
+    
+    prices = {"basic": 49, "pro": 149}
+    price = prices.get(request.tier, 0)
+    
     order = SubscriptionOrder(
         user_id=user.id,
         tier=request.tier,
-        cycle=cycle,
-        price=total_price,
+        price=price,
         status="pending",
     )
     db.add(order)
     db.commit()
     db.refresh(order)
-
+    
     return {
         "code": 0,
         "data": {
             "order_id": order.id,
             "tier": order.tier,
-            "cycle": order.cycle,
             "price": float(order.price),
             "status": order.status,
         }
@@ -317,17 +294,13 @@ def _process_payment_success(db: Session, out_trade_no: str, transaction_id: str
     order.status = "paid"
     order.transaction_no = transaction_id
 
-    # 根据订单的 cycle 确定过期天数
-    cycle = getattr(order, "cycle", None) or "monthly"
-    expire_days = CYCLE_DAYS.get(cycle, 30)
-
     # 升级用户订阅等级
     user = db.query(User).filter(User.id == order.user_id).first()
     if user:
         user.subscription_tier = tier or order.tier
         user.subscription_source = "wechat_pay"
         if tier and tier != "free":
-            user.subscription_expire = datetime.utcnow() + timedelta(days=expire_days)
+            user.subscription_expire = datetime.utcnow() + timedelta(days=30)
 
     # 同步 Subscription 表
     subscription = db.query(Subscription).filter(
@@ -338,20 +311,20 @@ def _process_payment_success(db: Session, out_trade_no: str, transaction_id: str
         subscription.tier = target_tier
         subscription.status = "active"
         subscription.expires_at = (
-            datetime.utcnow() + timedelta(days=expire_days) if target_tier != "free" else None
+            datetime.utcnow() + timedelta(days=30) if target_tier != "free" else None
         )
     else:
         subscription = Subscription(
             user_id=order.user_id,
             tier=target_tier,
             status="active",
-            expires_at=datetime.utcnow() + timedelta(days=expire_days) if target_tier != "free" else None,
+            expires_at=datetime.utcnow() + timedelta(days=30) if target_tier != "free" else None,
         )
         db.add(subscription)
 
     db.commit()
-    logger.info("[PayCallback] 订单 %s 支付完成，用户 %d 升级为 %s (cycle=%s, expire_days=%d)",
-                out_trade_no, order.user_id, target_tier, cycle, expire_days)
+    logger.info("[PayCallback] 订单 %s 支付完成，用户 %d 升级为 %s",
+                out_trade_no, order.user_id, target_tier)
     return True, "支付成功"
 
 
@@ -466,7 +439,7 @@ async def pay_callback(
         SubscriptionOrder.user_id == current_user.id,
     ).first()
     if not order:
-        raise HTTPException(status_code=1001, detail="订单不存在或不属于当前用户")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="订单不存在或不属于当前用户")
 
     success, msg = _process_payment_success(db, str(order_id), transaction_no, None)
     return {"code": 0, "message": msg}
@@ -478,10 +451,10 @@ async def cancel_subscription(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
     
     if user.subscription_tier == "free":
-        raise HTTPException(status_code=1001, detail="免费用户无需取消")
+        raise HTTPException(status_code=Errors.PARAM_INVALID, detail="免费用户无需取消")
     
     user.subscription_tier = "free"
     user.subscription_expire = None
@@ -508,7 +481,7 @@ async def get_payment_history(
 ):
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        raise HTTPException(status_code=1002, detail="用户不存在")
+        raise HTTPException(status_code=Errors.UNAUTHORIZED, detail="用户不存在")
     
     orders = db.query(SubscriptionOrder).filter(
         SubscriptionOrder.user_id == current_user.id,

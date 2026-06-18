@@ -3,6 +3,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
+from config.error_codes import Errors
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
@@ -13,14 +14,14 @@ if SECRET_KEY == "chongbaoshu_dev_jwt_secret_2025":
     import warnings
     warnings.warn("⚠️ JWT_SECRET 仍为默认开发密钥，生产环境请务必替换为强随机串！")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = 7 * 24 * 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24小时，生产环境建议配合 refresh token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 class TokenData(BaseModel):
     id: Optional[int] = None
     openid: Optional[str] = None
-    subscription_tier: Optional[str] = None
+    subscription_tier: Optional[str] = None  # JWT 中缓存的等级，避免重复 DB 查询
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -34,18 +35,18 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> TokenData:
     credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
+        status_code=Errors.UNAUTHORIZED,
         detail="未登录，请先登录",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        id: int = payload.get("id")
+        user_id: int = payload.get("id")
         openid: str = payload.get("openid")
-        subscription_tier: str = payload.get("subscription_tier")
-        if id is None:
+        tier: str = payload.get("subscription_tier", "free")
+        if user_id is None:
             raise credentials_exception
-        token_data = TokenData(id=id, openid=openid, subscription_tier=subscription_tier)
+        token_data = TokenData(id=user_id, openid=openid, subscription_tier=tier)
     except JWTError:
         raise credentials_exception
     return token_data
