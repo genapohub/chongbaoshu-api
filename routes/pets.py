@@ -37,6 +37,8 @@ class CreatePetRequest(BaseModel):
     grandfather_m_name: Optional[str] = None
     grandmother_m_name: Optional[str] = None
     role: Optional[str] = None
+    price: Optional[int] = None
+    is_for_sale: bool = False
     tags: Optional[List[str]] = None
 
 @router.get("")
@@ -104,7 +106,9 @@ async def get_pets(
             "species": pet.species,
             "breed": pet.breed,
             "gender": pet.gender,
+            "price": pet.price,
             "status": pet.status,
+            "is_for_sale": pet.is_for_sale if pet.is_for_sale else False,
             "avatar_photo": avatar_photo,
             "photos": [{"id": p.id, "photo_url": p.photo_url, "sort_order": p.sort_order} for p in gallery_photos],
             "tags": [t.tag for t in tags],
@@ -142,6 +146,8 @@ async def create_pet(
     grandfather_m_name: Optional[str] = Form(None),
     grandmother_m_name: Optional[str] = Form(None),
     role: Optional[str] = Form(None),
+    price: Optional[int] = Form(None),
+    is_for_sale: bool = Form(False),
     tags: Optional[str] = Form(None),
     avatar: Optional[UploadFile] = File(None),
     current_user: TokenData = Depends(get_current_user),
@@ -181,6 +187,8 @@ async def create_pet(
         grandfather_m_name=sanitize_string(grandfather_m_name) if grandfather_m_name else None,
         grandmother_m_name=sanitize_string(grandmother_m_name) if grandmother_m_name else None,
         role=role,
+        price=price,
+        is_for_sale=is_for_sale,
         status="active",
     )
     db.add(pet)
@@ -267,10 +275,12 @@ async def get_pet(
             "species": pet.species,
             "breed": pet.breed,
             "gender": pet.gender,
+            "price": pet.price,
             "birth_date": pet.birth_date,
             "color": pet.color,
             "chip_number": pet.chip_no,
             "status": pet.status,
+            "is_for_sale": pet.is_for_sale if pet.is_for_sale else False,
             "is_neutered": pet.is_neutered,
             "father_name": pet.father_name,
             "father_breed": pet.father_breed,

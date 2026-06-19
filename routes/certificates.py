@@ -201,3 +201,60 @@ async def revoke_certificate(
             "revoked_at": certificate.revoked_at,
         }
     }
+
+# ── 公开接口：买家扫码验证血统证书（无需登录） ──
+
+class CertVerifyResponse(BaseModel):
+    cert_no: str
+    pet_name: str
+    pet_species: str
+    pet_breed: Optional[str] = None
+    pet_gender: Optional[str] = None
+    pet_birth_date: Optional[str] = None
+    father_name: Optional[str] = None
+    father_breed: Optional[str] = None
+    mother_name: Optional[str] = None
+    mother_breed: Optional[str] = None
+    kennel_name: str = ""
+    issue_date: Optional[str] = None
+    status: str = ""
+
+@router.get("/public/{cert_no}", dependencies=[])
+async def verify_certificate_public(
+    cert_no: str,
+    db: Session = Depends(get_db)
+):
+    """公开接口：通过证书编号查询血统证书（买家扫码验证），无需登录"""
+    certificate = db.query(PedigreeCertificate).filter(
+        PedigreeCertificate.cert_no == cert_no,
+        PedigreeCertificate.status == "active"
+    ).first()
+
+    if not certificate:
+        raise HTTPException(status_code=Errors.NOT_FOUND, detail="证书不存在或已撤销")
+
+    pet = db.query(Pet).filter(Pet.id == certificate.pet_id).first()
+    owner = db.query(User).filter(User.id == certificate.owner_id).first()
+
+    # 增加分享计数
+    certificate.share_count = (certificate.share_count or 0) + 1
+    db.commit()
+
+    return {
+        "code": 0,
+        "data": {
+            "cert_no": certificate.cert_no,
+            "pet_name": pet.name if pet else "",
+            "pet_species": pet.species if pet else "",
+            "pet_breed": pet.breed if pet else None,
+            "pet_gender": pet.gender if pet else None,
+            "pet_birth_date": pet.birth_date.strftime("%Y-%m-%d") if pet and pet.birth_date else None,
+            "father_name": certificate.pedigree_tree.get("father_name") if certificate.pedigree_tree else None,
+            "father_breed": certificate.pedigree_tree.get("father_breed") if certificate.pedigree_tree else None,
+            "mother_name": certificate.pedigree_tree.get("mother_name") if certificate.pedigree_tree else None,
+            "mother_breed": certificate.pedigree_tree.get("mother_breed") if certificate.pedigree_tree else None,
+            "kennel_name": owner.kennel_name if owner else "",
+            "issue_date": certificate.issue_date.strftime("%Y-%m-%d") if certificate.issue_date else None,
+            "status": certificate.status,
+        }
+    }

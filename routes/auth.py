@@ -478,7 +478,12 @@ async def send_verification_code(
     else:
         import random
         code = f"{random.randint(100000, 999999)}"
-        # TODO: 接入短信服务商发送验证码
+        # ── 生产环境：通过腾讯云短信发送验证码 ──
+        try:
+            from utils.sms import send_verification_code
+            send_verification_code(req.phone, code)
+        except Exception as e:
+            logger.warning("短信发送失败（已降级为仅DB存储）: %s", e)
     
     from datetime import timedelta
     expires_at = datetime.utcnow() + timedelta(minutes=5)

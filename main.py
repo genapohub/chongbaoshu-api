@@ -33,6 +33,11 @@ from routes.certificates import router as certificates_router
 from routes.export import router as export_router
 from routes.notifications import router as notifications_router
 from routes.feedback import router as feedback_router
+from routes.buyer_leads import router as buyer_leads_router
+from routes.pet_sales import router as pet_sales_router
+from routes.litters import router as litters_router
+from routes.ledger import router as ledger_router
+from routes.admin import router as admin_router
 from routes.monitoring import router as monitoring_router
 
 app = FastAPI(
@@ -123,6 +128,11 @@ app.include_router(photos_router)
 app.include_router(certificates_router)
 app.include_router(export_router)
 app.include_router(notifications_router)
+app.include_router(buyer_leads_router)
+app.include_router(pet_sales_router)
+app.include_router(litters_router)
+app.include_router(ledger_router)
+app.include_router(admin_router)
 app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 app.include_router(monitoring_router)
 
@@ -160,6 +170,29 @@ async def validation_exception_handler(request, exc):
         content={"code": Errors.PARAM_INVALID, "message": "参数验证失败"}
     )
 
+
+async def reminder_push_sweeper():
+    """后台定时任务：每天9:00扫描待办提醒，推送微信模板消息"""
+    from config.database import SessionLocal
+    from utils.push import send_reminder_push
+    import asyncio
+    while True:
+        # 每天北京时间 9:00 执行
+        now = datetime.utcnow()
+        target = now.replace(hour=1, minute=0, second=0, microsecond=0)  # UTC 1:00 = 北京 9:00
+        if now > target:
+            target = target + timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        push_logger.info("下次提醒推送将在 %s 执行（%.0f 分钟后）", target, wait_seconds / 60)
+        await asyncio.sleep(wait_seconds)
+        db = SessionLocal()
+        try:
+            count = send_reminder_push(db)
+            push_logger.info("提醒推送完成: %s", count)
+        except Exception as e:
+            push_logger.error("提醒推送异常: %s", e)
+        finally:
+            db.close()
 async def subscription_expiry_sweeper():
     """后台定时任务：每小时扫描过期订阅并自动降级"""
     from config.database import SessionLocal
@@ -181,6 +214,7 @@ async def subscription_expiry_sweeper():
 async def startup():
     Base.metadata.create_all(bind=engine)
     asyncio.create_task(subscription_expiry_sweeper())
+    asyncio.create_task(reminder_push_sweeper())
     access_logger.info("数据库同步完成")
     access_logger.info("订阅到期自动清扫任务已启动")
     access_logger.info("宠宝树V1.1 API 启动, ENV=%s, PORT=%s",

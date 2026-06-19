@@ -6,6 +6,7 @@ from typing import List, Optional
 from datetime import datetime, date, timedelta
 from config.database import get_db
 from models.breeding_record import BreedingRecord
+from models.litter import Litter
 from models.pet import Pet
 from middleware.auth import get_current_user, TokenData
 from utils.helpers import format_datetime, calculate_due_date, is_valid_status_transition
@@ -24,6 +25,8 @@ class AddBreedingRequest(BaseModel):
     due_date: Optional[str] = None
     fee: Optional[float] = None
     notes: Optional[str] = None
+    litter_count: Optional[int] = None
+    delivery_date: Optional[str] = None
 
 
 class UpdateBreedingRequest(BaseModel):
@@ -34,6 +37,8 @@ class UpdateBreedingRequest(BaseModel):
     fee: Optional[float] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    litter_count: Optional[int] = None
+    delivery_date: Optional[str] = None
 
 
 @router.get("")
@@ -140,6 +145,32 @@ async def add_breeding_record(
     )
     db.add(breeding)
     db.commit()
+
+    # 产仔登记时自动创建同窝记录
+    if request.status == "delivered" and request.litter_count and request.litter_count > 0:
+        litter = Litter(
+            user_id=current_user.id,
+            mother_id=record.mother_id,
+            father_id=record.father_id,
+            breeding_record_id=record.id,
+            birth_date=request.delivery_date if request.delivery_date else datetime.utcnow().date(),
+            litter_size=request.litter_count,
+        )
+        db.add(litter)
+        db.flush()
+        # 批量创建幼犬
+        for i in range(1, request.litter_count + 1):
+            puppy = Pet(
+                owner_id=current_user.id,
+                name=f"幼犬{i}",
+                species="犬",
+                birth_date=litter.birth_date,
+                litter_id=litter.id,
+                role="幼崽",
+                status="active",
+                is_for_sale=True,
+            )
+            db.add(puppy)
     db.refresh(breeding)
 
     return {
@@ -224,8 +255,38 @@ async def update_breeding_record(
         record.status = request.status
     if request.notes is not None:
         record.notes = sanitize_string(request.notes) if request.notes else None
+    if request.litter_count is not None:
+        record.litter_count = request.litter_count
+    if request.delivery_date is not None:
+        record.delivery_date = datetime.strptime(request.delivery_date, "%Y-%m-%d").date()
 
     db.commit()
+
+    # 产仔登记时自动创建同窝记录
+    if request.status == "delivered" and request.litter_count and request.litter_count > 0:
+        litter = Litter(
+            user_id=current_user.id,
+            mother_id=record.mother_id,
+            father_id=record.father_id,
+            breeding_record_id=record.id,
+            birth_date=request.delivery_date if request.delivery_date else datetime.utcnow().date(),
+            litter_size=request.litter_count,
+        )
+        db.add(litter)
+        db.flush()
+        # 批量创建幼犬
+        for i in range(1, request.litter_count + 1):
+            puppy = Pet(
+                owner_id=current_user.id,
+                name=f"幼犬{i}",
+                species="犬",
+                birth_date=litter.birth_date,
+                litter_id=litter.id,
+                role="幼崽",
+                status="active",
+                is_for_sale=True,
+            )
+            db.add(puppy)
     db.refresh(record)
 
     return {
@@ -260,6 +321,32 @@ async def update_breeding_status(
     record.status = status
     db.commit()
 
+    # 产仔登记时自动创建同窝记录
+    if request.status == "delivered" and request.litter_count and request.litter_count > 0:
+        litter = Litter(
+            user_id=current_user.id,
+            mother_id=record.mother_id,
+            father_id=record.father_id,
+            breeding_record_id=record.id,
+            birth_date=request.delivery_date if request.delivery_date else datetime.utcnow().date(),
+            litter_size=request.litter_count,
+        )
+        db.add(litter)
+        db.flush()
+        # 批量创建幼犬
+        for i in range(1, request.litter_count + 1):
+            puppy = Pet(
+                owner_id=current_user.id,
+                name=f"幼犬{i}",
+                species="犬",
+                birth_date=litter.birth_date,
+                litter_id=litter.id,
+                role="幼崽",
+                status="active",
+                is_for_sale=True,
+            )
+            db.add(puppy)
+
     return {
         "code": 0,
         "message": "状态更新成功",
@@ -286,6 +373,32 @@ async def delete_breeding_record(
 
     record.is_deleted = True
     db.commit()
+
+    # 产仔登记时自动创建同窝记录
+    if request.status == "delivered" and request.litter_count and request.litter_count > 0:
+        litter = Litter(
+            user_id=current_user.id,
+            mother_id=record.mother_id,
+            father_id=record.father_id,
+            breeding_record_id=record.id,
+            birth_date=request.delivery_date if request.delivery_date else datetime.utcnow().date(),
+            litter_size=request.litter_count,
+        )
+        db.add(litter)
+        db.flush()
+        # 批量创建幼犬
+        for i in range(1, request.litter_count + 1):
+            puppy = Pet(
+                owner_id=current_user.id,
+                name=f"幼犬{i}",
+                species="犬",
+                birth_date=litter.birth_date,
+                litter_id=litter.id,
+                role="幼崽",
+                status="active",
+                is_for_sale=True,
+            )
+            db.add(puppy)
 
     return {"code": 0, "message": "删除成功"}
 
