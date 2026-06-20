@@ -1,5 +1,6 @@
 import os
 import asyncio
+import datetime
 from dotenv import load_dotenv
 load_dotenv()  # 必须在所有 import 之前加载环境变量
 
@@ -178,7 +179,7 @@ async def reminder_push_sweeper():
     import asyncio
     while True:
         # 每天北京时间 9:00 执行
-        now = dt_module.datetime.utcnow()
+        now = datetime.utcnow()
         target = now.replace(hour=1, minute=0, second=0, microsecond=0)  # UTC 1:00 = 北京 9:00
         if now > target:
             target = target + timedelta(days=1)
