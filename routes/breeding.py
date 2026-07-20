@@ -244,7 +244,8 @@ async def update_breeding_record(
         if request.due_date is None:
             pet = db.query(Pet).filter(Pet.id == record.mother_id).first()
             if pet:
-                record.due_date = datetime.strptime(calculate_due_date(pet.species, request.mating_date), "%Y-%m-%d").date()
+                due_date_str = calculate_due_date(pet.species, request.mating_date)
+                record.due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
     if request.due_date is not None:
         record.due_date = datetime.strptime(request.due_date, "%Y-%m-%d").date()
     if request.mating_method is not None:
