@@ -33,6 +33,7 @@ def get_db_url() -> str:
       - MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD（云托管）
       必需环境变量：DB_HOST/MYSQL_HOST, DB_NAME/MYSQL_DATABASE, DB_USER/MYSQL_USER, DB_PASS/MYSQL_PASSWORD
       如果缺少 MySQL 配置，则自动降级为 SQLite（./database.sqlite）
+      注意：DB_HOST 可以包含端口号，如 "host:port"，此时 DB_PORT 会被忽略
     """
     if is_production():
         host = os.getenv("DB_HOST") or os.getenv("MYSQL_HOST")
@@ -42,9 +43,13 @@ def get_db_url() -> str:
         password = os.getenv("DB_PASS") or os.getenv("MYSQL_PASSWORD")
 
         if all([host, name, user, password]):
+            if ":" in host:
+                host_with_port = host
+            else:
+                host_with_port = f"{host}:{port}"
             return (
                 f"mysql+pymysql://{user}:{password}"
-                f"@{host}:{port}/{name}?charset=utf8mb4"
+                f"@{host_with_port}/{name}?charset=utf8mb4"
             )
         else:
             print(
