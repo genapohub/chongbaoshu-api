@@ -12,3 +12,4 @@ requests==2.31.0
 slowapi==0.1.9
 bleach==6.1.0
 sentry-sdk[fastapi]==2.19.2
+pymysql==1.1.0
