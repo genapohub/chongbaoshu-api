@@ -27,29 +27,33 @@ def get_db_url() -> str:
     根据环境返回数据库连接 URL。
 
     - 开发环境：使用 SQLite，默认路径 ./database.sqlite
-    - 生产环境：使用 MySQL，从环境变量读取连接参数
-      必需环境变量：DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS
+    - 生产环境：优先使用 MySQL，从环境变量读取连接参数
+      支持的环境变量名称（兼容多种部署平台）：
+      - DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS（标准）
+      - MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD（云托管）
+      必需环境变量：DB_HOST/MYSQL_HOST, DB_NAME/MYSQL_DATABASE, DB_USER/MYSQL_USER, DB_PASS/MYSQL_PASSWORD
+      如果缺少 MySQL 配置，则自动降级为 SQLite（./database.sqlite）
     """
     if is_production():
-        host = os.getenv("DB_HOST")
-        port = os.getenv("DB_PORT", "3306")
-        name = os.getenv("DB_NAME")
-        user = os.getenv("DB_USER")
-        password = os.getenv("DB_PASS")
+        host = os.getenv("DB_HOST") or os.getenv("MYSQL_HOST")
+        port = os.getenv("DB_PORT") or os.getenv("MYSQL_PORT") or "3306"
+        name = os.getenv("DB_NAME") or os.getenv("MYSQL_DATABASE")
+        user = os.getenv("DB_USER") or os.getenv("MYSQL_USER")
+        password = os.getenv("DB_PASS") or os.getenv("MYSQL_PASSWORD")
 
-        if not all([host, name, user, password]):
-            raise RuntimeError(
-                "生产环境缺少数据库配置。请设置环境变量："
-                "DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS"
+        if all([host, name, user, password]):
+            return (
+                f"mysql+pymysql://{user}:{password}"
+                f"@{host}:{port}/{name}?charset=utf8mb4"
+            )
+        else:
+            print(
+                "[WARNING] 生产环境未配置 MySQL，自动降级为 SQLite。"
+                "请设置环境变量：DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS"
             )
 
-        return (
-            f"mysql+pymysql://{user}:{password}"
-            f"@{host}:{port}/{name}?charset=utf8mb4"
-        )
-    else:
-        storage = os.getenv("DB_STORAGE", "./database.sqlite")
-        return f"sqlite:///{storage}"
+    storage = os.getenv("DB_STORAGE", "./database.sqlite")
+    return f"sqlite:///{storage}"
 
 
 def get_env_label() -> str:
