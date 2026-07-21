@@ -22,7 +22,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     ENV=production \
-    PORT=3000 \
+    PORT=80 \
     TZ=Asia/Shanghai
 
 # 安装运行时依赖（sqlite 工具等）
@@ -50,14 +50,14 @@ RUN mkdir -p /opt/chongbaoshu-api/uploads \
 
 USER appuser
 
-EXPOSE 3000
+EXPOSE 80
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health-check || exit 1
+    CMD curl -f http://localhost:80/api/health-check || exit 1
 
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
-     "--port", "3000", \
+     "--port", "80", \
      "--workers", "2", \
      "--log-level", "info"]
