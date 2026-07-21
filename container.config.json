@@ -2,7 +2,7 @@
   "containerName": "chongbaoshu-api",
   "dockerfilePath": "Dockerfile",
   "buildDir": "",
-  "port": 80,
+  "port": 3000,
   "cpu": 1,
   "mem": 2,
   "minReplicas": 1,
@@ -12,7 +12,7 @@
   "envs": {
     "ENV": "production",
     "DEV_MODE": "false",
-    "PORT": "80",
+    "PORT": "3000",
     "JWT_ALGORITHM": "HS256",
     "CORS_ORIGINS": "*",
     "MAX_UPLOAD_SIZE_MB": "5",
