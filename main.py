@@ -184,14 +184,14 @@ async def reminder_push_sweeper():
         if now > target:
             target = target + timedelta(days=1)
         wait_seconds = (target - now).total_seconds()
-        push_logger.info("下次提醒推送将在 %s 执行（%.0f 分钟后）", target, wait_seconds / 60)
+        access_logger.info("下次提醒推送将在 %s 执行（%.0f 分钟后）", target, wait_seconds / 60)
         await asyncio.sleep(wait_seconds)
         db = SessionLocal()
         try:
             count = send_reminder_push(db)
-            push_logger.info("提醒推送完成: %s", count)
+            access_logger.info("提醒推送完成: %s", count)
         except Exception as e:
-            push_logger.error("提醒推送异常: %s", e)
+            error_logger.error("提醒推送异常: %s", e)
         finally:
             db.close()
 async def subscription_expiry_sweeper():
