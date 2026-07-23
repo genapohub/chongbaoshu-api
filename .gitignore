@@ -147,3 +147,5 @@ cython_debug/
 
 # Alembic 临时表遗留（迁移异常中断时产生）
 # _alembic_tmp_* 表只存在于数据库内部，无文件可忽略
+.dev-server.pid
+logs/
