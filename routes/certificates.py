@@ -219,7 +219,7 @@ class CertVerifyResponse(BaseModel):
     issue_date: Optional[str] = None
     status: str = ""
 
-@router.get("/public/{cert_no}", dependencies=[])
+@router.get("/certificates/public/{cert_no}", dependencies=[])
 async def verify_certificate_public(
     cert_no: str,
     db: Session = Depends(get_db)
