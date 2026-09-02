@@ -8,11 +8,18 @@ from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
 SECRET_KEY = os.getenv("JWT_SECRET")
+_DEV_DEFAULT_SECRET = "chongbaoshu_dev_jwt_secret_2025"
+if os.getenv("ENV", "development") == "production" and (not SECRET_KEY or SECRET_KEY == _DEV_DEFAULT_SECRET):
+    # 生产环境 fail-fast：默认密钥等于任何人都能伪造 Token，宁可拒绝启动
+    raise RuntimeError(
+        "生产环境必须配置强随机的 JWT_SECRET（云托管控制台环境变量），"
+        "且不得使用开发默认值！"
+    )
 if not SECRET_KEY:
-    SECRET_KEY = "chongbaoshu_dev_jwt_secret_2025"
+    SECRET_KEY = _DEV_DEFAULT_SECRET
     import warnings
     warnings.warn("⚠️ JWT_SECRET 环境变量未设置，已使用默认开发密钥。生产环境请务必在云托管控制台配置 JWT_SECRET！")
-elif SECRET_KEY == "chongbaoshu_dev_jwt_secret_2025":
+elif SECRET_KEY == _DEV_DEFAULT_SECRET:
     import warnings
     warnings.warn("⚠️ JWT_SECRET 仍为默认开发密钥，生产环境请务必替换为强随机串！")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
