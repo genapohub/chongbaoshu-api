@@ -28,8 +28,9 @@ async def health_check_deep() -> dict:
     db_latency_ms = 0
     try:
         start = time.time()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        # engine 为同步 create_engine（非 create_async_engine），须用同步连接
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         db_latency_ms = round((time.time() - start) * 1000, 2)
         db_ok = True
     except Exception as e:
