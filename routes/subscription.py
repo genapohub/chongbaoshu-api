@@ -349,13 +349,14 @@ async def wx_pay_callback(request: Request, db: Session = Depends(get_db)):
 
     logger.info("[PayCallback] 收到支付回调, len=%d", len(body_str))
 
-    # 2. 开发模式跳过验签（生产环境必须验签）
-    if os.getenv("ENV", "development") == "production" and wx_pay_config["api_v3_key"]:
-        # TODO: 生产环境需加载商户证书完成 RSA 签名验证
-        # 签名字符串 = timestamp + "\n" + nonce + "\n" + body_str + "\n"
-        logger.debug("[PayCallback] 生产环境验签 (serial=%s)", serial)
-    else:
-        logger.info("[PayCallback] 开发模式，跳过签名验证")
+    # 2. 验签：生产环境 RSA-SHA256 强校验（微信支付平台公钥），失败 fail closed
+    #    开发模式未配置密钥时放行，规则见 utils/wechat_pay_verify.py
+    from utils.wechat_pay_verify import verify_callback_signature
+
+    ok, reason = verify_callback_signature(signature, timestamp, nonce, body_str)
+    if not ok:
+        logger.error("[PayCallback] 验签失败 (%s)，拒绝处理", reason)
+        return {"code": "FAIL", "message": "验签失败"}
 
     # 3. 解析请求体，提取加密资源
     try:
