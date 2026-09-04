@@ -22,18 +22,21 @@ services:
     env_file:
       - .env
     environment:
+      # ENV=docker → 走 SQLite，与本地开发环境行为一致（见 config/env.py）
       - ENV=docker
-      - DATABASE_URL=mysql+pymysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:-password}@mysql:3306/${MYSQL_DB:-chongbaoshu}?charset=utf8mb4
+      - DB_STORAGE=/opt/chongbaoshu-api/database/database.sqlite
       - WX_PAY_MCH_ID=${WX_PAY_MCH_ID:-}
       - WX_PAY_API_V3_KEY=${WX_PAY_API_V3_KEY:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      # 注意：不要再设置 DATABASE_URL —— 代码只读 DB_* / MYSQL_*（config/env.py 的
+      # get_db_url），该变量不会被解析，设了也不生效，反而误导排障。
     volumes:
       - uploads_data:/opt/chongbaoshu-api/uploads
       - logs_data:/opt/chongbaoshu-api/logs
       - certs_data:/opt/chongbaoshu-api/certs
-    depends_on:
-      mysql:
-        condition: service_healthy
+      # ⚠️ 关键：SQLite 库文件必须持久化。
+      # 容器重建/升级时，未挂载的写入层会被丢弃，导致数据全部丢失。
+      - database_data:/opt/chongbaoshu-api/database
     networks:
       - chongbaoshu-net
     healthcheck:
@@ -48,11 +51,16 @@ services:
           memory: 512M
           cpus: "1.0"
 
-  # ── MySQL 数据库 ────────────────────────────────────────
+  # ── MySQL 数据库（可选，默认不启动）──────────────────────
+  # 默认 ENV=docker 走 SQLite，与本地开发一致，无需 MySQL。
+  # 需要时：docker-compose --profile with-mysql up -d
+  #        并同时把 api 的 ENV 改为 production、补齐 DB_HOST/DB_NAME/DB_USER/DB_PASS
   mysql:
     image: mysql:8.0
     container_name: chongbaoshu-mysql
     restart: always
+    profiles:
+      - with-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-chongbaoshu_root_2025}
       MYSQL_DATABASE: ${MYSQL_DB:-chongbaoshu}
@@ -106,6 +114,9 @@ services:
 # ── 持久化卷 ──────────────────────────────────────────────
 volumes:
   mysql_data:
+    driver: local
+  # SQLite 库文件所在目录，必须持久化，否则重建容器即丢数据
+  database_data:
     driver: local
   uploads_data:
     driver: local
