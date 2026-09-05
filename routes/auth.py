@@ -1,3 +1,4 @@
+import logging
 import os
 import hashlib
 from datetime import datetime, timedelta
@@ -19,6 +20,8 @@ from utils.helpers import get_user_limits, format_datetime, get_effective_tier
 from utils.sanitize import sanitize_string
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -108,7 +111,7 @@ async def wx_login(request: Request, req: WxLoginRequest, db: Session = Depends(
                 db.commit()
                 db.refresh(user)
 
-            print(f"[DEV MODE] 模拟登录: {DEV_OPENID}, is_new={is_new}")
+            logger.info(f"[DEV MODE] 模拟登录: {DEV_OPENID}, is_new={is_new}")
         else:
             # 生产模式：调用真实微信API
             from utils.wechat import code2session
@@ -148,9 +151,7 @@ async def wx_login(request: Request, req: WxLoginRequest, db: Session = Depends(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] 登录失败: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"登录失败: {str(e)}")
         raise HTTPException(status_code=Errors.SERVER_ERROR, detail=str(e))
 
 @router.get("/profile")
@@ -474,7 +475,7 @@ async def send_verification_code(
 
     if DEV_MODE:
         code = "123456"  # 开发环境固定验证码
-        print(f"[DEV MODE] 验证码: {code}")
+        logger.debug(f"[DEV MODE] 验证码: {code}")
     else:
         import random
         code = f"{random.randint(100000, 999999)}"
@@ -524,7 +525,7 @@ async def phone_login(request: Request, req: PhoneLoginRequest, db: Session = De
 
     # 开发模式：支持默认验证码123456直接登录（无需先发送验证码）
     if DEV_MODE and req.code == "123456":
-        print(f"[DEV MODE] 使用默认验证码登录: {req.phone}")
+        logger.info(f"[DEV MODE] 使用默认验证码登录: {req.phone}")
         user, is_new = get_or_create_user(db, f"phone_{req.phone}", None)
 
         if not user.phone:

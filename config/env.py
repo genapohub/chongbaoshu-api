@@ -9,7 +9,10 @@
     from config.env import is_production, get_db_url
 """
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def is_production() -> bool:
@@ -52,7 +55,7 @@ def get_db_url() -> str:
                 f"@{host_with_port}/{name}?charset=utf8mb4"
             )
         else:
-            print(
+            logger.warning(
                 "[WARNING] 生产环境未配置 MySQL，自动降级为 SQLite。"
                 "请设置环境变量：DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS"
             )

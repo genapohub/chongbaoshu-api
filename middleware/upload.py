@@ -1,8 +1,11 @@
+import logging
 import os
 import uuid
 from fastapi import File, UploadFile
 from fastapi.exceptions import HTTPException
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # 允许的 MIME 类型白名单
 ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -74,4 +77,4 @@ def delete_local_file(photo_url: str):
         if file_path.exists():
             file_path.unlink()
     except Exception as e:
-        print(f"[删除文件失败] {photo_url} {str(e)}")
+        logger.error(f"[删除文件失败] {photo_url} {str(e)}")
